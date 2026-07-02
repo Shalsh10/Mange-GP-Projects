@@ -1,0 +1,48 @@
+.sidebar {
+  position: fixed;
+
+  top: 70px; /* نفس ارتفاع الهيدر */
+  left: 0;
+padding-top: 20px;
+  width: 250px;
+  height: calc(100vh - 70px);
+
+  background: #243B56;
+}
+
+.logo {
+  display: flex;
+  justify-content: center;
+  padding: 15px 0;
+  border-bottom: 1px solid rgba(255,255,255,.1);
+}
+
+.logo img {
+  width: 60px;
+  height: 60px;
+}
+
+.sidebar nav {
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar nav a {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  color: white;
+  text-decoration: none;
+  padding: 14px 18px;
+  cursor: pointer;
+  transition: .3s;
+}
+
+.sidebar nav a:hover,
+.sidebar nav a.active {
+  background: #0C5BC4;
+}
+
+.sidebar svg {
+  font-size: 15px;
+}

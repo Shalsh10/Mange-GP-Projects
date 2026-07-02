@@ -1,0 +1,132 @@
+.discussion-page {
+  padding: 30px;
+  background: #f7f9fb;
+  min-height: 100vh;
+}
+
+.discussion-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+/* Container Card matching the clean layout without vertical lines */
+.discussion-card {
+  background: #ffffff !important;
+  border-radius: 12px !important;
+  padding: 32px !important;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.01) !important;
+  margin-top: 20px !important;
+  overflow-x: auto !important;
+  border: none !important;
+}
+
+.discussion-custom-table {
+  width: 100% !important;
+  border-collapse: collapse !important;
+  text-align: left !important;
+  border: none !important;
+}
+
+.discussion-custom-table thead {
+  background: transparent !important;
+}
+
+/* Table Header - No background color, no vertical lines, clean grey header text */
+.discussion-custom-table th {
+  padding: 16px 12px !important;
+  color: #718096 !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  border: none !important;
+  border-bottom: 1px solid #E2E8F0 !important;
+  text-transform: capitalize !important;
+  font-family: 'Outfit', sans-serif !important;
+  letter-spacing: 0.2px !important;
+  background: transparent !important;
+}
+
+.discussion-custom-table th:first-of-type,
+.discussion-custom-table td:first-of-type {
+  padding-left: 0 !important;
+}
+
+.discussion-custom-table th:last-of-type,
+.discussion-custom-table td:last-of-type {
+  padding-right: 0 !important;
+}
+
+/* Table Body - Only thin horizontal line below each row */
+.discussion-custom-table td {
+  padding: 18px 12px !important;
+  color: #4A5568 !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  border: none !important;
+  border-bottom: 1px solid #EDF2F7 !important;
+  vertical-align: middle !important;
+  font-family: 'Inter', sans-serif !important;
+}
+
+.discussion-custom-table tr:last-of-type td {
+  border-bottom: none !important; /* No bottom line on last row */
+}
+
+.discussion-row-clickable {
+  cursor: pointer !important;
+  transition: background 0.15s ease !important;
+}
+
+.discussion-row-clickable:hover {
+  background: #F8FAFC !important;
+}
+
+.row-num {
+  font-weight: 700 !important;
+  color: #1A202C !important;
+  width: 35px !important;
+  font-size: 13px !important;
+}
+
+.project-title-cell {
+  font-weight: 600 !important;
+  color: #2D3748 !important;
+  font-family: 'Outfit', sans-serif !important;
+  font-size: 13px !important;
+}
+
+.grade-val {
+  font-weight: 600 !important;
+  color: #4A5568 !important;
+}
+
+.add-grade-link {
+  color: #0052CC !important;
+  cursor: pointer !important;
+  font-weight: 600 !important;
+  text-decoration: none !important;
+  transition: color 0.15s ease !important;
+}
+
+.add-grade-link:hover {
+  color: #0043A4 !important;
+  text-decoration: underline !important;
+}
+
+/* Download Button matching the design perfectly */
+.download-btn-custom {
+  background: #0052CC !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+  font-size: 12px !important;
+  padding: 10px 24px !important;
+  border-radius: 8px !important;
+  text-transform: none !important;
+  box-shadow: none !important;
+  letter-spacing: 0.2px !important;
+}
+
+.download-btn-custom:hover {
+  background: #0043A4 !important;
+}

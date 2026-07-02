@@ -1,0 +1,72 @@
+/* Custom styled CSS for Graduation Projects Library Page */
+
+.library-card-custom {
+  background: #ffffff !important;
+  border: 1px solid #E2E8F0 !important;
+  border-radius: 12px !important;
+  padding: 24px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: space-between !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.01) !important;
+  transition: transform 0.2s ease, box-shadow 0.2s ease !important;
+}
+
+.library-card-custom:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.03) !important;
+}
+
+.fav-toggle-btn {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 8px 16px !important;
+  border: 1px solid #E2E8F0 !important;
+  border-radius: 8px !important;
+  background: #ffffff !important;
+  color: #4A5568 !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.02) !important;
+}
+
+.fav-toggle-btn:hover {
+  background: #F7FAFC !important;
+  border-color: #CBD5E0 !important;
+}
+
+.fav-toggle-btn.active {
+  background: #FEB2B2 !important;
+  border-color: #F56565 !important;
+  color: #9B2C2C !important;
+}
+
+.filter-select-wrapper {
+  background: #ffffff !important;
+  border: 1px solid #E2E8F0 !important;
+  border-radius: 8px !important;
+  padding: 8px 12px !important;
+  height: 40px !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  align-items: center !important;
+}
+
+.filter-select-wrapper select {
+  font-family: 'Inter', sans-serif !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  color: #0052CC !important;
+  background: transparent !important;
+  border: none !important;
+  outline: none !important;
+  cursor: pointer !important;
+  padding-right: 18px !important;
+}
+
+.projects-grid-container {
+  margin-top: 10px !important;
+}

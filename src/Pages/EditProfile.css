@@ -1,0 +1,33 @@
+/* EditProfile.css */
+
+.profile-image-container {
+  position: relative;
+  width: 110px;
+  height: 110px;
+  flex-shrink: 0;
+}
+
+.profile-image {
+  width: 110px;
+  height: 110px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 4px solid white;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+}
+
+.camera-icon {
+  position: absolute;
+  bottom: 4px;
+  left: 70px;
+  background-color: #5A4FCF;
+  padding: 8px;
+  border-radius: 50%;
+  cursor: pointer;
+  z-index: 50;
+  transition: 0.3s;
+}
+
+.camera-icon:hover {
+  transform: scale(1.05);
+}

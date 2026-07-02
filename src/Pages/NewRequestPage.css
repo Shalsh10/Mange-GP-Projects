@@ -1,0 +1,142 @@
+.new-requests-page {
+  padding: 30px;
+  background: #f5f5f5;
+  min-height: 100vh;
+}
+
+.new-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 25px;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.back-icon {
+  font-size: 24px;
+  cursor: pointer;
+}
+
+.new-card {
+  background: white;
+  border-radius: 16px;
+  padding: 25px;
+}
+
+.search-row {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  margin-bottom: 30px;
+}
+
+.search-box {
+  flex: 1;
+  height: 45px;
+  background: #f2f2f2;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  padding: 0 15px;
+}
+
+.search-icon {
+  color: gray;
+  font-size: 20px;
+}
+
+.search-box input {
+  border: none;
+  outline: none;
+  background: transparent;
+  margin-left: 10px;
+  width: 100%;
+}
+
+.filter-btn {
+  width: 45px;
+  height: 45px;
+  border: none;
+  border-radius: 10px;
+  background: #0066ff;
+  color: white;
+  font-size: 22px;
+  cursor: pointer;
+}
+
+.users-list {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.user-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.user-info img {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+}
+
+.user-info h4 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.user-info p {
+  margin: 5px 0 0;
+  color: gray;
+  font-size: 13px;
+}
+
+/* ================= SEND BUTTON ================= */
+
+.send-btn {
+  width: 120px;
+  height: 42px;
+  border: none;
+  border-radius: 10px;
+  background-color: #2563eb !important;
+  color: white;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: 0.3s;
+}
+
+.send-btn:hover {
+  background: #1e40af !important;
+  transform: scale(1.03);
+}
+
+/* ================= PENDING BUTTON ================= */
+
+.pending-btn {
+  width: 120px;
+  height: 42px;
+  border: none;
+  border-radius: 10px;
+  background: #22c55e;
+  color: white;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: default;
+}
+.pending-btn:hover {
+  background: #15803d !important;
+  transform: scale(1.03);
+}

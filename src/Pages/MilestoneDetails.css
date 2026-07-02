@@ -1,0 +1,215 @@
+.milestone-page {
+  min-height: 100vh;
+  background: #f3f3f3;
+  padding: 24px;
+}
+
+.back-btn {
+  border: none;
+  background: transparent;
+  font-size: 28px;
+  cursor: pointer;
+  color: #333;
+  margin-bottom: 12px;
+}
+
+.milestone-header-card {
+  background: #fff;
+  border-radius: 8px;
+  padding: 28px;
+  margin-bottom: 24px;
+}
+
+.milestone-header-card h2 {
+  font-size: 28px;
+  font-weight: 700;
+  color: #2f2f2f;
+  margin-bottom: 18px;
+}
+
+.milestone-row {
+  margin-bottom: 12px;
+  color: #666;
+  line-height: 1.7;
+}
+
+.label {
+  font-weight: 600;
+  color: #2f2f2f;
+}
+
+.description {
+  margin-top: 10px;
+}
+
+.dates {
+  display: flex;
+  gap: 40px;
+  margin-top: 22px;
+}
+
+.date-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #777;
+}
+
+.assigned-icon {
+  color: #3b82f6;
+}
+
+.due-icon {
+  color: #8b5cf6;
+}
+
+.top-section {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+.middle-section {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+.grade-card {
+  height: fit-content;
+}
+
+.files-card {
+  margin-bottom: 24px;
+}
+.requirements-card,
+.grade-card,
+.submission-card,
+.files-card,
+.feedback-section {
+  background: white;
+  border-radius: 8px;
+  padding: 24px;
+}
+
+.requirements-card h3,
+.feedback-section h3,
+.files-card h3,
+.submission-card h3 {
+  font-size: 30px;
+  font-weight: 700;
+  color: #2f2f2f;
+  margin-bottom: 20px;
+}
+
+.requirement-item {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 14px;
+  color: #555;
+  font-size: 14px;
+}
+
+.grade-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.grade-title svg {
+  color: #fbbc04;
+}
+
+.grade-title h3 {
+  font-size: 30px;
+  margin: 0;
+}
+
+.grade-card p {
+  margin-bottom: 10px;
+  color: #555;
+}
+
+.submission-info {
+  margin-bottom: 16px;
+}
+
+.submission-info p {
+  margin-bottom: 8px;
+}
+
+.submission-note {
+  color: #666;
+  line-height: 1.8;
+}
+
+.file-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px;
+  border: 1px solid #ececec;
+  border-radius: 6px;
+  margin-bottom: 12px;
+}
+
+.file-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.file-left svg {
+  color: #e53935;
+  font-size: 22px;
+}
+
+.file-item a {
+  text-decoration: none;
+  font-weight: 600;
+  color: #3b82f6;
+}
+
+.feedback-box {
+  background: #f7f7f7;
+  border-radius: 6px;
+  padding: 16px;
+  margin-bottom: 14px;
+}
+
+.feedback-file {
+  font-weight: 600;
+  margin-bottom: 10px;
+  color: #333;
+}
+
+.feedback-box p {
+  color: #666;
+  line-height: 1.7;
+}
+
+.feedback-footer {
+  margin-top: 14px;
+  display: flex;
+  justify-content: space-between;
+  color: #888;
+  font-size: 13px;
+}
+
+@media (max-width: 992px) {
+
+  .top-section,
+  .middle-section {
+    grid-template-columns: 1fr;
+  }
+
+  .dates {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+
+}
