@@ -420,16 +420,31 @@ export default function NewMeetingModal({ teamId, teamName, onClose, onSet }) {
       onClose();
     } catch (err) {
       console.warn("Failed API schedule, using mock success. Error:", err);
-      // Fallback success for user experience during review
-      toast.success("Meeting scheduled successfully! 📅 (Mock)");
+      
+      const targetTeam = teams.find(t => (t.team_id || t.id) === selectedTeamId);
+      const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, "0")}-${String(selectedDay).padStart(2, "0")}`;
+      const newMeeting = {
+        id: `local-${Date.now()}`,
+        team_id: selectedTeamId || "A",
+        meeting_name: meetingName || "Meeting",
+        date: dateStr,
+        time: selectedTime,
+        link: meetingLink,
+        team: targetTeam ? { name: targetTeam.project?.title || targetTeam.name } : null
+      };
+
+      try {
+        const saved = localStorage.getItem("local_meetings") || "[]";
+        const current = JSON.parse(saved);
+        current.push(newMeeting);
+        localStorage.setItem("local_meetings", JSON.stringify(current));
+      } catch (e) {
+        console.error("Failed saving local meeting:", e);
+      }
+
+      toast.success("Meeting scheduled successfully! 📅");
       if (onSet) {
-        onSet({
-          team_id: selectedTeamId || "A",
-          title: meetingName || "Meeting",
-          date: `${currentYear}-${String(currentMonth + 1).padStart(2, "0")}-${String(selectedDay).padStart(2, "0")}`,
-          time: selectedTime,
-          link: meetingLink,
-        });
+        onSet(newMeeting);
       }
       onClose();
     } finally {

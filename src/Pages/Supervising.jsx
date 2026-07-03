@@ -145,7 +145,8 @@ const calendarWeeks = [
 
 export default function Supervising() {
   const navigate = useNavigate();
-  const [teams, setTeams] = useState(defaultTeams);
+  const [teams, setTeams] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [deptFilter, setDeptFilter] = useState("All");
   const [statusFilter, setStatusFilter] = useState("All");
@@ -155,91 +156,179 @@ export default function Supervising() {
   const [showNewMeeting, setShowNewMeeting] = useState(false);
   const [meetingTeam, setMeetingTeam] = useState(null);
 
+  const [statistics, setStatistics] = useState({
+    total_teams: 0,
+    on_track: 0,
+    delayed: 0,
+    upcoming_meetings_count: 0
+  });
+
+  const [currentMilestone, setCurrentMilestone] = useState({
+    title: "No Active Milestone",
+    deadline: "N/A"
+  });
+
+  const [upcomingMeetings, setUpcomingMeetings] = useState([]);
+  const [recentlyGraded, setRecentlyGraded] = useState([]);
+  const [recentActivity, setRecentActivity] = useState([]);
+
   // Fetch supervised teams from API
   useEffect(() => {
     (async () => {
       try {
+        setLoading(true);
         const params = {};
         if (searchTerm) params.search = searchTerm;
         if (deptFilter !== "All") {
-          params.department_id = deptFilter === "CS" ? 1 : 2;
+          if (deptFilter === "CS") params.department_id = 2;
+          else if (deptFilter === "IT" || deptFilter === "Information Technology") params.department_id = 1;
         }
         if (statusFilter !== "All") {
-          params.status = statusFilter.toLowerCase().replace(" ", "");
+          params.status = statusFilter.toLowerCase().replace(" ", "_");
+        }
+        if (gradeFilter !== "All") {
+          params.project_course_id = gradeFilter === "Capstone 1" ? 1 : 2;
         }
         const res = await SupervisorService.getSupervisedTeams(params);
         console.log("Supervised Teams Response:", res);
         
-        // Extract project list if backend returns it
-        const fetched = res?.data?.projects || res?.projects || res?.data || res;
-        if (Array.isArray(fetched) && fetched.length > 0) {
-          // Map fetched elements to layout keys or adapt them
-          const adapted = fetched.map(item => {
-            const teamId = item.team_id || item.id || "A";
-            // Map index pictures or values
-            let localImg = blockchainImg;
-            if (teamId === "B") localImg = aiHealthImg;
-            else if (teamId === "C" || teamId === "E") localImg = vrImg;
-            else if (teamId === "D") localImg = iotImg;
+        const dataObj = res?.data || res || {};
+        const fetched = dataObj.projects || [];
 
-            return {
-              team_id: teamId,
-              title: item.project?.title || item.title || "Project Title",
-              description: item.project?.description || item.description || "Description",
-              image: localImg,
-              badge: item.status || "On Track",
-              badgeBg: item.status === "Delayed" ? "#FEE2E2" : (item.status === "Pending" ? "#FFEDD5" : "#DCFCE7"),
-              badgeColor: item.status === "Delayed" ? "#EF4444" : (item.status === "Pending" ? "#F97316" : "#22C55E"),
-              tags: item.project?.tags || item.tags || ["CS", "Blockchain", "Web"],
-              ta: item.ta?.name || item.ta || "Teacher Assistant",
-              status: item.status || "On Track",
-              statusColor: item.status === "Delayed" ? "#EF4444" : (item.status === "Pending" ? "#F97316" : "#22C55E"),
-              statusBg: item.status === "Delayed" ? "#FEE2E2" : (item.status === "Pending" ? "#FFEDD5" : "#DCFCE7"),
-              committee: item.committee?.map(c => c.name || c) || ["Khaled Kareem", "Mariam Emad", "Abanoub Yaqoub"],
-              avatars: item.students?.map(s => s.avatar) || [
-                "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&q=80",
-                "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=100&q=80",
-                "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=100&q=80",
-                "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=100&q=80",
-              ],
-            };
+        // Set statistics
+        const stats = dataObj.statistics || {};
+        setStatistics({
+          total_teams: stats.total_teams ?? 0,
+          on_track: stats.on_track ?? 0,
+          delayed: stats.delayed ?? 0,
+          upcoming_meetings_count: stats.upcoming_meetings_count ?? 0
+        });
+
+        // Set side sections
+        setUpcomingMeetings(dataObj.upcoming_meetings || []);
+        setRecentlyGraded(dataObj.recently_graded || []);
+        setRecentActivity(dataObj.recent_activity || []);
+
+        // Resolve current milestone
+        const firstWithMilestone = fetched.find(p => p.current_milestone);
+        if (firstWithMilestone?.current_milestone) {
+          setCurrentMilestone({
+            title: firstWithMilestone.current_milestone.title || "Evaluation",
+            deadline: firstWithMilestone.current_milestone.deadline 
+              ? new Date(firstWithMilestone.current_milestone.deadline).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+              : "TBD"
           });
-          setTeams(adapted);
+        } else {
+          setCurrentMilestone({
+            title: "No Active Milestone",
+            deadline: "N/A"
+          });
         }
+
+        const adapted = fetched.map(item => {
+          const teamId = item.team_id || item.id || "A";
+          
+          let localImg = blockchainImg;
+          if (item.project?.image_url) {
+            const url = item.project.image_url;
+            localImg = url.startsWith("http") ? url : `https://mango-attendant-handyman.ngrok-free.dev${url.startsWith("/") ? "" : "/"}${url}`;
+          } else {
+            if (teamId === 5) localImg = iotImg;
+            else if (teamId === 12) localImg = blockchainImg;
+            else if (teamId === 13) localImg = vrImg;
+            else if (teamId === 19) localImg = aiHealthImg;
+          }
+
+          const rawStatus = item.overall_status || "on_track";
+          let statusLabel = "On Track";
+          let statusColor = "#22C55E";
+          let statusBg = "#DCFCE7";
+          if (rawStatus === "delayed") {
+            statusLabel = "Delayed";
+            statusColor = "#EF4444";
+            statusBg = "#FEE2E2";
+          } else if (rawStatus === "pending_submission" || rawStatus === "pending") {
+            statusLabel = "Pending Submission";
+            statusColor = "#F97316";
+            statusBg = "#FFEDD5";
+          }
+
+          const tags = [];
+          if (item.project?.category) tags.push(item.project.category);
+          if (item.department?.name) tags.push(item.department.name);
+          if (item.project?.technologies) {
+            const techs = item.project.technologies.split(",").map(t => t.trim());
+            tags.push(...techs);
+          }
+          if (tags.length === 0) tags.push("CS");
+
+          const committeeList = [];
+          if (item.milestone_committee) {
+            if (Array.isArray(item.milestone_committee.doctors)) {
+              committeeList.push(...item.milestone_committee.doctors.map(d => d.name));
+            }
+            if (Array.isArray(item.milestone_committee.tas)) {
+              committeeList.push(...item.milestone_committee.tas.map(t => t.name));
+            }
+          }
+          if (committeeList.length === 0) {
+            committeeList.push("Doctor 1", "Doctor 6", "TA 2", "TA 4");
+          }
+
+          const membersList = item.members || [];
+          const avatars = membersList.map(m => m.image || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&q=80");
+          const membersCount = membersList.length;
+
+          return {
+            team_id: teamId,
+            title: item.project?.title || "Project Title",
+            description: item.project?.description || "Description",
+            image: localImg,
+            badge: statusLabel,
+            badgeBg: statusBg,
+            badgeColor: statusColor,
+            tags: tags,
+            ta: item.ta_supervisor?.name || "Teacher Assistant",
+            status: statusLabel,
+            statusColor: statusColor,
+            statusBg: statusBg,
+            committee: committeeList,
+            avatars: avatars.slice(0, 4),
+            moreMembersCount: membersCount > 4 ? membersCount - 4 : 0,
+            rawItem: item
+          };
+        });
+        setTeams(adapted);
       } catch (err) {
-        console.warn("Failed fetching supervised teams from API, using default mock data. Error:", err);
+        console.warn("Failed fetching supervised teams from API. Error:", err);
+        setTeams([]);
+        setStatistics({ total_teams: 0, on_track: 0, delayed: 0, upcoming_meetings_count: 0 });
+      } finally {
+        setLoading(false);
       }
     })();
-  }, [searchTerm, deptFilter, statusFilter]);
+  }, [searchTerm, deptFilter, statusFilter, gradeFilter]);
 
   // Filtering Logic
-  const filteredTeams = teams.filter((t) => {
-    const matchSearch =
-      t.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      t.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      t.ta.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      t.team_id.toLowerCase().includes(searchTerm.toLowerCase());
-
-    const matchDept =
-      deptFilter === "All" ||
-      t.tags.some(tag => tag.toLowerCase() === deptFilter.toLowerCase());
-
-    const matchStatus =
-      statusFilter === "All" ||
-      t.status.toLowerCase().replace(" ", "") === statusFilter.toLowerCase().replace(" ", "");
-
-    return matchSearch && matchDept && matchStatus;
-  });
+  const filteredTeams = teams;
 
   // Calendar Day Interaction
   const handleCalendarDayClick = (day, idx) => {
-    if (idx === 28) {
-      toast.success("Meeting with Team A scheduled on Jan 26 at 11:00 AM 📅", { id: "cal-jan-26" });
-    } else if (idx === 31) {
-      toast.success("Meeting with Team C scheduled on Jan 29 at 02:00 PM 📅", { id: "cal-jan-29" });
+    const faded = idx < 3 || idx > 33;
+    if (faded) return;
+    
+    const dayMeetings = upcomingMeetings.filter(m => new Date(m.scheduled_at).getDate() === parseInt(day));
+    if (dayMeetings.length > 0) {
+      dayMeetings.forEach(m => {
+        const timeStr = new Date(m.scheduled_at).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+        toast.success(`Meeting with Team ${m.team_id} ("${m.project_title}") scheduled on ${timeStr} 📅`, {
+          id: `cal-meet-${m.id}`,
+          duration: 4000
+        });
+      });
     } else {
       toast.dismiss();
-      toast(`No meetings scheduled for Jan ${day}.`, { icon: "ℹ️", id: `cal-jan-${day}` });
+      toast(`No meetings scheduled for day ${day}.`, { icon: "ℹ️", id: `cal-info-${day}` });
     }
   };
 
@@ -266,11 +355,11 @@ export default function Supervising() {
           <div className="sv-header-info">
             <div>
               <span className="sv-milestone-label">Current Milestone: </span>
-              <span className="sv-milestone-value">User Interface Design & Prototyping</span>
+              <span className="sv-milestone-value">{currentMilestone.title}</span>
             </div>
             <div className="sv-deadline-row">
               <CalendarIcon size={15} strokeWidth={2.4} />
-              <span>Deadline: Jan 30, 2026</span>
+              <span>Deadline: {currentMilestone.deadline}</span>
             </div>
           </div>
         </header>
@@ -287,7 +376,7 @@ export default function Supervising() {
               </div>
               <span className="sv-stat-arrow">&gt;</span>
             </div>
-            <div className="sv-stat-value" style={{ color: "#0052CC" }}>5</div>
+            <div className="sv-stat-value" style={{ color: "#0052CC" }}>{statistics.total_teams}</div>
           </div>
 
           <div className="sv-stat-card" onClick={() => setStatusFilter("On Track")} style={{ cursor: "pointer" }}>
@@ -300,7 +389,7 @@ export default function Supervising() {
               </div>
               <span className="sv-stat-arrow">&gt;</span>
             </div>
-            <div className="sv-stat-value" style={{ color: "#22C55E" }}>3</div>
+            <div className="sv-stat-value" style={{ color: "#22C55E" }}>{statistics.on_track}</div>
           </div>
 
           <div className="sv-stat-card" onClick={() => setStatusFilter("Delayed")} style={{ cursor: "pointer" }}>
@@ -313,7 +402,7 @@ export default function Supervising() {
               </div>
               <span className="sv-stat-arrow">&gt;</span>
             </div>
-            <div className="sv-stat-value" style={{ color: "#EF4444" }}>1</div>
+            <div className="sv-stat-value" style={{ color: "#EF4444" }}>{statistics.delayed}</div>
           </div>
 
           <div className="sv-stat-card" style={{ cursor: "default" }}>
@@ -326,7 +415,7 @@ export default function Supervising() {
               </div>
               <span className="sv-stat-arrow">&gt;</span>
             </div>
-            <div className="sv-stat-value" style={{ color: "#4A5568" }}>2</div>
+            <div className="sv-stat-value" style={{ color: "#4A5568" }}>{statistics.upcoming_meetings_count}</div>
           </div>
         </section>
 
@@ -372,23 +461,25 @@ export default function Supervising() {
           </div>
 
           <div className="sv-filter-group">
-            <span>Grade:</span>
+            <span>Capstone:</span>
             <select
               className="sv-filter-select"
               value={gradeFilter}
               onChange={(e) => setGradeFilter(e.target.value)}
             >
               <option value="All">All</option>
-              <option value="High">High</option>
-              <option value="Low">Low</option>
+              <option value="Capstone 1">Capstone 1</option>
+              <option value="Capstone 2">Capstone 2</option>
             </select>
           </div>
         </section>
 
         {/* ================= TEAMS LIST ================= */}
         <section className="sv-teams-list">
-          {filteredTeams.length === 0 ? (
-            <div className="sv-empty-state">No supervising teams match your filters.</div>
+          {loading ? (
+            <div className="sv-empty-state">Loading supervising teams...</div>
+          ) : filteredTeams.length === 0 ? (
+            <div className="sv-empty-state">No supervising teams found.</div>
           ) : (
             filteredTeams.map((team) => (
               <div key={`${team.team_id}-${team.title}`} className="sv-card">
@@ -496,7 +587,10 @@ export default function Supervising() {
             <div className="sv-calendar-days">
               {calendarWeeks.flat().map((day, idx) => {
                 const faded = idx < 3 || idx > 33;
-                const active = idx === 28 || idx === 31; // Days 26 and 29
+                const active = !faded && upcomingMeetings.some(m => {
+                  const mDate = new Date(m.scheduled_at);
+                  return mDate.getDate() === parseInt(day);
+                });
 
                 return (
                   <span
@@ -517,79 +611,60 @@ export default function Supervising() {
         {/* Recently Graded Section */}
         <div className="sv-side-section">
           <h3 className="sv-side-title">Recently Graded</h3>
-
-          <div className="sv-graded-card">
-            <div className="sv-graded-row">
-              <div className="sv-graded-left">
-                <Star className="sv-graded-star" size={13} fill="currentColor" />
-                <div>
-                  <h4 className="sv-graded-team">Team C</h4>
-                  <p className="sv-graded-desc">AI Mental Health Companion</p>
+          {recentlyGraded.length === 0 ? (
+            <div style={{ color: "#718096", fontSize: "12px", padding: "12px 16px", fontStyle: "italic", background: "#ffffff", borderRadius: "12px", border: "1px solid #E2E8F0" }}>
+              No recently graded projects.
+            </div>
+          ) : (
+            recentlyGraded.map((item, idx) => (
+              <div className="sv-graded-card" key={idx}>
+                <div className="sv-graded-row">
+                  <div className="sv-graded-left">
+                    <Star className="sv-graded-star" size={13} fill="currentColor" />
+                    <div>
+                      <h4 className="sv-graded-team">{item.team_name}</h4>
+                      <p className="sv-graded-desc">{item.project_title}</p>
+                    </div>
+                  </div>
+                  <div className="sv-grade-badge">{item.grade}%</div>
+                </div>
+                <div className="sv-graded-date">
+                  {new Date(item.graded_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                 </div>
               </div>
-              <div className="sv-grade-badge">92%</div>
-            </div>
-            <div className="sv-graded-date">Jan 26</div>
-          </div>
-
-          <div className="sv-graded-card">
-            <div className="sv-graded-row">
-              <div className="sv-graded-left">
-                <Star className="sv-graded-star" size={13} fill="currentColor" />
-                <div>
-                  <h4 className="sv-graded-team">Team E</h4>
-                  <p className="sv-graded-desc">VR Career Simulator</p>
-                </div>
-              </div>
-              <div className="sv-grade-badge">86%</div>
-            </div>
-            <div className="sv-graded-date">Jan 23</div>
-          </div>
+            ))
+          )}
         </div>
 
         {/* Recent Activity Section */}
         <div className="sv-side-section">
           <h3 className="sv-side-title">Recent Activity</h3>
-          <div className="sv-activity-card">
-            <div className="sv-activity-row">
-              <FileText className="sv-activity-icon" size={14} />
-              <div className="sv-activity-copy">
-                <div>
-                  <span className="sv-activity-team-link" style={{ color: "#22C55E" }}>
-                    Team A
-                  </span>{" "}
-                  submitted UI Prototype
-                </div>
-                <div className="sv-activity-time">30 mints ago</div>
-              </div>
+          {recentActivity.length === 0 ? (
+            <div style={{ color: "#718096", fontSize: "12px", padding: "12px 16px", fontStyle: "italic", background: "#ffffff", borderRadius: "12px", border: "1px solid #E2E8F0" }}>
+              No recent activity.
             </div>
-
-            <div className="sv-activity-row">
-              <svg className="sv-activity-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-              <div className="sv-activity-copy">
-                <div>
-                  <span className="sv-activity-team-link" style={{ color: "#22C55E" }}>
-                    Team C
-                  </span>{" "}
-                  uploaded a file
+          ) : (
+            <div className="sv-activity-card">
+              {recentActivity.map((act, idx) => (
+                <div className="sv-activity-row" key={idx}>
+                  {act.type === "submission" ? (
+                    <FileText className="sv-activity-icon" size={14} />
+                  ) : (
+                    <CalendarIcon className="sv-activity-icon" size={14} />
+                  )}
+                  <div className="sv-activity-copy">
+                    <div>
+                      <span className="sv-activity-team-link" style={{ color: "#22C55E" }}>
+                        {act.team_name}
+                      </span>{" "}
+                      {act.description}
+                    </div>
+                    <div className="sv-activity-time">{act.time_ago}</div>
+                  </div>
                 </div>
-                <div className="sv-activity-time">2 hours ago</div>
-              </div>
+              ))}
             </div>
-
-            <div className="sv-activity-row">
-              <CalendarIcon className="sv-activity-icon" size={14} />
-              <div className="sv-activity-copy">
-                <div>
-                  <span className="sv-activity-team-link" style={{ color: "#0052CC" }}>
-                    Team B
-                  </span>{" "}
-                  requested a meeting
-                </div>
-                <div className="sv-activity-time">1 day ago</div>
-              </div>
-            </div>
-          </div>
+          )}
         </div>
 
         {/* Quick Actions Section */}

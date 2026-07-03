@@ -149,6 +149,347 @@ const FALLBACK_MILESTONES = [
   }
 ];
 
+const TAB_CONFIG = [
+  { k: "All", api: "all", label: "All" },
+  { k: "On Progress", api: "on_progress", label: "On Progress" },
+  { k: "Completed", api: "completed", label: "Completed" },
+  { k: "Pending", api: "pending", label: "Pending" },
+  { k: "Overdue", api: "overdue", label: "Overdue" },
+];
+
+const firstFilled = (...values) =>
+  values.find((value) => value !== undefined && value !== null && value !== "") ?? "";
+
+const hasFlag = (value) => value === true || value === 1 || value === "1" || value === "true";
+
+const toStatus = (status) => {
+  const raw = String(status || "").toLowerCase().replace(/[_-]+/g, " ");
+
+  if (raw.includes("complete") || raw.includes("submitted")) return "Completed";
+  if (raw.includes("progress") || raw.includes("ongoing") || raw.includes("current") || raw.includes("open")) {
+    return "On Progress";
+  }
+  if (raw.includes("pending") || raw.includes("locked") || raw.includes("upcoming") || raw.includes("not started")) {
+    return "Pending";
+  }
+
+  return status || "Pending";
+};
+
+const isOverdueMilestone = (milestone) => {
+  const rawStatus = String(firstFilled(milestone.status, milestone.state)).toLowerCase();
+  return (
+    hasFlag(milestone.is_overdue) ||
+    hasFlag(milestone.overdue) ||
+    rawStatus.includes("overdue") ||
+    rawStatus.includes("late") ||
+    rawStatus.includes("delayed")
+  );
+};
+
+const formatWithPrefix = (value, prefix) => {
+  const text = firstFilled(value, "TBD");
+  if (/^(due|submitted|deadline)\s*:/i.test(String(text))) return text;
+  return `${prefix}: ${text}`;
+};
+
+const getArrayFromResponse = (response, preferredKeys = []) => {
+  const roots = [response?.data?.data, response?.data, response].filter(Boolean);
+  const keys = [...preferredKeys, "milestones", "teams", "items", "results", "data"];
+
+  for (const root of roots) {
+    if (Array.isArray(root)) return root;
+
+    for (const key of keys) {
+      const value = root?.[key];
+      if (Array.isArray(value)) return value;
+      if (value && typeof value === "object") {
+        for (const nestedKey of keys) {
+          if (Array.isArray(value[nestedKey])) return value[nestedKey];
+        }
+      }
+    }
+  }
+
+  return [];
+};
+
+const getTabsFromResponse = (response) => {
+  const roots = [response?.data?.data, response?.data, response].filter(Boolean);
+
+  for (const root of roots) {
+    const tabs = firstFilled(
+      root?.tabs,
+      root?.tab_counts,
+      root?.tabs_counts,
+      root?.counts,
+      root?.filters,
+      root?.meta?.tabs,
+      root?.meta?.counts
+    );
+
+    if (tabs) return tabs;
+  }
+
+  return null;
+};
+
+const getTabCount = (tabs, tab, fallback) => {
+  if (!tabs) return fallback;
+
+  const config = TAB_CONFIG.find((item) => item.k === tab);
+  const possibleKeys = [
+    config?.api,
+    config?.k,
+    config?.label,
+    config?.k?.toLowerCase(),
+    config?.label?.toLowerCase(),
+    config?.label?.toLowerCase().replace(/\s+/g, "_"),
+  ].filter(Boolean);
+
+  if (Array.isArray(tabs)) {
+    const match = tabs.find((item) => {
+      const key = String(firstFilled(item.key, item.name, item.label, item.status, item.tab)).toLowerCase();
+      return possibleKeys.some((possible) => key === String(possible).toLowerCase());
+    });
+
+    return Number(firstFilled(match?.count, match?.total, match?.value, fallback));
+  }
+
+  if (typeof tabs === "object") {
+    for (const key of possibleKeys) {
+      const value = tabs[key];
+      if (typeof value === "number") return value;
+      if (value && typeof value === "object") {
+        return Number(firstFilled(value.count, value.total, value.value, fallback));
+      }
+    }
+  }
+
+  return fallback;
+};
+
+const normalizeRequirementText = (item) => {
+  const value = firstFilled(
+    item?.requirement,
+    item?.title,
+    item?.name,
+    item?.description,
+    item?.text,
+    item?.value,
+    typeof item === "object" ? "" : item
+  );
+
+  return value === undefined || value === null ? "" : String(value);
+};
+
+const normalizeRequirements = (requirements) => {
+  const list = Array.isArray(requirements) ? requirements : [];
+  const normalized = list
+    .map(normalizeRequirementText)
+    .filter(Boolean);
+
+  return normalized.length ? normalized : ["Requirement details"];
+};
+
+const formatGrade = (grade) => {
+  if (grade === undefined || grade === null || grade === "") return "Add Grade / 20";
+  const text = String(grade);
+  return text.includes("/") || text.toLowerCase().includes("add") ? text : `${text}/20`;
+};
+
+const formatDaysLate = (value) => {
+  if (value === undefined || value === null || value === "") return "Late";
+  const text = String(value);
+  if (text.toLowerCase().includes("day")) return text;
+  return `${text} Days`;
+};
+
+const normalizeLookupText = (value) =>
+  String(value || "")
+    .toLowerCase()
+    .replace(/phase\s*\d+\s*:?\s*/g, "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const getMilestoneCandidateId = (milestone) =>
+  firstFilled(
+    milestone?.id,
+    milestone?.milestone_id,
+    milestone?.milestone?.id,
+    milestone?.project_course_milestone_id,
+    milestone?.pivot?.milestone_id
+  );
+
+const normalizeMilestone = (milestone, index = 0) => {
+  const isOverdue = isOverdueMilestone(milestone);
+  const status = toStatus(firstFilled(milestone.status, milestone.state));
+  const submittedAt = firstFilled(milestone.submitted_at, milestone.submission_date, milestone.submitted_date);
+  const deadline = firstFilled(milestone.deadline, milestone.due_date, milestone.end_date, milestone.date);
+
+  return {
+    id: firstFilled(milestone.id, milestone.milestone_id, milestone.milestone?.id, index + 1),
+    committeeId: firstFilled(
+      milestone.committee_id,
+      milestone.milestone_committee_id,
+      milestone.milestone_committee?.id,
+      milestone.committee?.id,
+      milestone.id,
+      milestone.milestone_id,
+      index + 1
+    ),
+    phase: firstFilled(milestone.phase, milestone.phase_number, milestone.order, milestone.sort_order, index + 1),
+    title: firstFilled(milestone.title, milestone.name, milestone.milestone_title, milestone.milestone?.title, "Untitled Milestone"),
+    status,
+    marks: firstFilled(milestone.marks, milestone.mark, milestone.max_marks, milestone.max_score, milestone.score, 5),
+    deadline: submittedAt && status === "Completed" ? formatWithPrefix(submittedAt, "Submitted") : formatWithPrefix(deadline, "Due"),
+    isOverdue,
+    lateCount: Number(firstFilled(milestone.late_count, milestone.late_teams_count, milestone.teams_late_count, milestone.stats?.late, 0)),
+    teamsSubmittedCount: Number(
+      firstFilled(
+        milestone.teams_submitted_count,
+        milestone.submitted_teams_count,
+        milestone.submitted_count,
+        milestone.teams_submitted,
+        milestone.stats?.submitted,
+        0
+      )
+    ),
+    teamsTotalCount: Number(
+      firstFilled(milestone.teams_total_count, milestone.total_teams, milestone.teams_count, milestone.stats?.total, 5)
+    ),
+    reqs: normalizeRequirements(firstFilled(milestone.requirements, milestone.reqs, milestone.tasks, [])),
+    teamsData: Array.isArray(milestone.teamsData) ? milestone.teamsData : [],
+  };
+};
+
+const normalizeTeamStatus = (team) => {
+  const raw = String(firstFilled(team.status, team.submission_status, team.state)).toLowerCase().replace(/[_-]+/g, " ");
+
+  if (hasFlag(team.is_late) || raw.includes("late") || raw.includes("overdue") || raw.includes("delayed")) {
+    return "Late";
+  }
+  if (raw.includes("submitted") || raw.includes("complete") || raw.includes("on time")) return "Submitted";
+  if (raw.includes("not") || raw.includes("pending") || raw.includes("missing")) return "Not Yet";
+
+  return firstFilled(team.status, team.submission_status, "Not Yet");
+};
+
+const normalizeTeam = (team) => {
+  const status = normalizeTeamStatus(team);
+  const daysLate = firstFilled(team.days_late, team.late_days, team.delay_days);
+  const nestedTeam = firstFilled(
+    team.team,
+    team.project_team,
+    team.projectTeam,
+    team.group,
+    team.project?.team,
+    {}
+  );
+  const project = firstFilled(team.project, nestedTeam.project, team.team?.project, {});
+  const teamId = firstFilled(
+    team.team_id,
+    nestedTeam.id,
+    team.project_team_id,
+    team.projectTeam?.id,
+    team.group_id,
+    team.group?.id,
+    team.id
+  );
+  const teamName = firstFilled(
+    team.team_name,
+    nestedTeam.name,
+    team.name,
+    project.title,
+    project.name,
+    team.project_title,
+    teamId ? `Team ${teamId}` : "Unknown Team"
+  );
+
+  return {
+    id: teamId,
+    gradeMilestoneId: firstFilled(
+      team.milestone_id,
+      team.current_milestone_id,
+      team.current_milestone?.id,
+      team.milestone?.id,
+      team.milestone_committee?.milestone_id,
+      team.milestone_committee?.milestone?.id,
+      team.committee_milestone_id,
+      team.project_course_milestone_id,
+      team.pivot?.milestone_id
+    ),
+    name: String(teamName),
+    status,
+    date: firstFilled(team.submission_date, team.submitted_at, team.date, "--"),
+    action: status === "Submitted" || status === "On Time" ? "View" : "Remind",
+    grade: formatGrade(firstFilled(team.grade, team.milestone_grade, team.score)),
+    daysLate: formatDaysLate(firstFilled(daysLate, team.daysLate)),
+  };
+};
+
+const countForTab = (list, tab) =>
+  list.filter((milestone) => {
+    if (tab === "All") return !milestone.isOverdue;
+    if (tab === "On Progress") return milestone.status === "On Progress" && !milestone.isOverdue;
+    if (tab === "Completed") return milestone.status === "Completed" && !milestone.isOverdue;
+    if (tab === "Pending") return milestone.status === "Pending" && !milestone.isOverdue;
+    if (tab === "Overdue") return milestone.isOverdue;
+    return true;
+  }).length;
+
+const getMockGrades = () => {
+  try {
+    const saved = localStorage.getItem("mock_milestone_grades");
+    return saved ? JSON.parse(saved) : {};
+  } catch {
+    return {};
+  }
+};
+
+const getRestoredFallback = () => {
+  const grades = getMockGrades();
+  return FALLBACK_MILESTONES.map(m => {
+    if (!m.teamsData) return m;
+    const updatedTeams = m.teamsData.map(t => {
+      const key = `${m.id}-${t.id}`;
+      if (grades[key]) {
+        return { ...t, grade: grades[key] };
+      }
+      return t;
+    });
+    return { ...m, teamsData: updatedTeams };
+  });
+};
+
+const resolveGradeMilestoneId = async (teamId, milestone, team) => {
+  try {
+    const response = await Milestones.getAllowableMilestones(teamId);
+    const list = getArrayFromResponse(response, ["milestones"]);
+    const currentTitle = normalizeLookupText(milestone.title);
+
+    const matched = list.find((item) => {
+      const itemTitle = normalizeLookupText(
+        firstFilled(item.title, item.name, item.milestone, item.milestone?.title)
+      );
+
+      return (
+        itemTitle === currentTitle ||
+        String(getMilestoneCandidateId(item)) === String(team.gradeMilestoneId) ||
+        String(getMilestoneCandidateId(item)) === String(milestone.id)
+      );
+    });
+
+    const matchedId = getMilestoneCandidateId(matched);
+    if (matchedId) return matchedId;
+  } catch (err) {
+    console.warn("Failed to resolve allowable milestone for grading:", err);
+  }
+
+  return firstFilled(team.gradeMilestoneId, milestone.id);
+};
+
 export default function MilestonesSetup() {
   const { academicYear } = useAcademicYear();
   const [viewAs, setViewAs] = useState("supervisor"); // committee or supervisor
@@ -156,70 +497,35 @@ export default function MilestonesSetup() {
   const [showModal, setShowModal] = useState(false);
   const [expandedMsTableId, setExpandedMsTableId] = useState(null); // ID of currently expanded milestone table
   const [milestones, setMilestones] = useState([]);
+  const [tabCounts, setTabCounts] = useState(null);
   const [loading, setLoading] = useState(true);
   const [notesState, setNotesState] = useState({}); // Stores the note value of milestone inputs
 
-  const getMockGrades = () => {
-    try {
-      const saved = localStorage.getItem("mock_milestone_grades");
-      return saved ? JSON.parse(saved) : {};
-    } catch {
-      return {};
-    }
-  };
-
-  const getRestoredFallback = () => {
-    const grades = getMockGrades();
-    return FALLBACK_MILESTONES.map(m => {
-      if (!m.teamsData) return m;
-      const updatedTeams = m.teamsData.map(t => {
-        const key = `${m.id}-${t.id}`;
-        if (grades[key]) {
-          return { ...t, grade: grades[key] };
-        }
-        return t;
-      });
-      return { ...m, teamsData: updatedTeams };
-    });
-  };
-
-  // Fetch Milestones dynamically from backend API
-  const fetchMilestones = async () => {
-    try {
-      setLoading(true);
-      const response = await Milestones.getMilestonesWithTabs(viewAs, activeTab);
-      const data = response?.data?.data || response?.data || response || [];
-
-      if (Array.isArray(data) && data.length > 0) {
-        const formatted = data.map(m => ({
-          id: m.id || m.milestone_id || Date.now(),
-          phase: m.phase || m.order || 1,
-          title: m.title || "Untitled Milestone",
-          status: m.status || "Pending",
-          marks: m.marks || 5,
-          deadline: m.deadline || m.due_date || "TBD",
-          isOverdue: String(m.status).toLowerCase() === "overdue" || m.is_overdue,
-          reqs: m.requirements || ["Requirement details"],
-          teamsSubmittedCount: m.teams_submitted_count || 0,
-          teamsData: []
-        }));
-        setMilestones(formatted);
-      } else {
-        setMilestones(getRestoredFallback());
-      }
-    } catch (err) {
-      console.error("Error fetching milestones, falling back to mock:", err);
-      setMilestones(getRestoredFallback());
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
+    const fetchMilestones = async () => {
+      try {
+        setLoading(true);
+        setExpandedMsTableId(null);
+
+        const response = await Milestones.getMilestonesWithTabs(viewAs, activeTab);
+        const list = getArrayFromResponse(response, ["milestones"]);
+        const formatted = list.map((item, index) => normalizeMilestone(item, index));
+
+        setTabCounts(getTabsFromResponse(response));
+        setMilestones(formatted);
+      } catch (err) {
+        console.error("Error fetching milestones, falling back to mock:", err);
+        setTabCounts(null);
+        setMilestones(getRestoredFallback().map((item, index) => normalizeMilestone(item, index)));
+      } finally {
+        setLoading(false);
+      }
+    };
+
     fetchMilestones();
   }, [viewAs, activeTab]);
 
-  // Handle toggling the team submissions table expansion via API
+  // Handle toggling the team submissions table expansion via API.
   const handleToggleTable = async (milestoneId) => {
     if (expandedMsTableId === milestoneId) {
       setExpandedMsTableId(null);
@@ -228,55 +534,51 @@ export default function MilestonesSetup() {
     setExpandedMsTableId(milestoneId);
 
     try {
-      const response = await Milestones.getTeamsInMilestone(milestoneId, viewAs, activeTab === "Overdue" ? "late" : "");
-      const data = response?.data?.data || response?.data || response || [];
+      const response = await Milestones.getTeamsInMilestone(
+        milestoneId,
+        viewAs,
+        activeTab === "Overdue" ? "late" : ""
+      );
+      const teams = getArrayFromResponse(response, ["teams"]).map(normalizeTeam);
 
-      if (Array.isArray(data) && data.length > 0) {
-        const formattedTeams = data.map(t => ({
-          id: t.team_id || t.id,
-          name: t.team_name || t.name || "Unknown Team",
-          status: t.status || "Not Yet",
-          date: t.submission_date || t.date || "——",
-          action: t.status === "Submitted" || t.status === "On Time" ? "View" : "Remind",
-          grade: t.grade !== null && t.grade !== undefined ? `${t.grade}/20` : "Add Grade / 20",
-          daysLate: t.days_late || "5 Days"
-        }));
-        setMilestones(prev => prev.map(m => m.id === milestoneId ? { ...m, teamsData: formattedTeams } : m));
-      } else {
-        const restored = getRestoredFallback();
-        const targetMs = restored.find(fm => fm.id === milestoneId);
-        if (targetMs) {
-          setMilestones(prev => prev.map(m => m.id === milestoneId ? { ...m, teamsData: targetMs.teamsData } : m));
-        }
-      }
+      setMilestones(prev => prev.map(m => m.id === milestoneId ? { ...m, teamsData: teams } : m));
     } catch (err) {
       console.error("Error fetching teams list, falling back to mock:", err);
-      const restored = getRestoredFallback();
-      const targetMs = restored.find(fm => fm.id === milestoneId);
+      const targetMs = getRestoredFallback().find(fm => String(fm.id) === String(milestoneId));
       if (targetMs) {
-        setMilestones(prev => prev.map(m => m.id === milestoneId ? { ...m, teamsData: targetMs.teamsData } : m));
+        const teams = (targetMs.teamsData || []).map(normalizeTeam);
+        setMilestones(prev => prev.map(m => m.id === milestoneId ? { ...m, teamsData: teams } : m));
       }
     }
   };
 
-  // Submit notes to students via API
-  const handleAddNote = async (milestoneId) => {
-    const noteText = notesState[milestoneId] || "";
+  // Submit notes to students via API.
+  const handleAddNote = async (milestone) => {
+    const noteText = notesState[milestone.id] || "";
     if (!noteText.trim()) return;
 
     try {
-      await Milestones.addNoteOnMilestone(milestoneId, noteText);
+      await Milestones.addNoteOnMilestone(milestone.committeeId || milestone.id, noteText);
       alert("Note added successfully for students!");
-      setNotesState(prev => ({ ...prev, [milestoneId]: "" }));
+      setNotesState(prev => ({ ...prev, [milestone.id]: "" }));
     } catch (err) {
-      console.error("Error submitting note to API:", err);
-      alert("Saved note locally for students (offline fallback)");
-      setNotesState(prev => ({ ...prev, [milestoneId]: "" }));
+      console.error("Error submitting note:", err);
+      alert(err.message || "Failed to submit note.");
     }
   };
 
-  // Grade team dynamically via API
-  const handleGradeTeam = async (milestoneId, teamId, currentGrade) => {
+  // Grade team is available only in committee view.
+  const handleGradeTeam = async (milestone, team) => {
+    if (viewAs !== "committee") return;
+
+    const teamId = team.id;
+    const currentGrade = team.grade;
+
+    if (!teamId) {
+      alert("Cannot add grade because the team id is missing from the API response.");
+      return;
+    }
+
     const currentVal = currentGrade.includes("Add") ? "" : currentGrade.split("/")[0];
     const newGrade = prompt(`Enter grade for this team (out of 20):`, currentVal);
     if (newGrade === null || newGrade === undefined) return;
@@ -288,13 +590,20 @@ export default function MilestonesSetup() {
     }
 
     try {
-      // Skip API if teamId is mock string ID (starts with 't')
       if (typeof teamId === "string" && teamId.startsWith("t")) {
-        throw new Error("Mock team grading");
+        const grades = getMockGrades();
+        grades[`${milestone.id}-${teamId}`] = `${parsed}/20`;
+        localStorage.setItem("mock_milestone_grades", JSON.stringify(grades));
+      } else {
+        const gradeMilestoneId = await resolveGradeMilestoneId(teamId, milestone, team);
+        if (!gradeMilestoneId) {
+          throw new Error("Cannot find an allowed milestone for this team.");
+        }
+        await Milestones.addGradeOnMilestone(teamId, gradeMilestoneId, parsed);
       }
-      await Milestones.addGradeOnMilestone(teamId, milestoneId, parsed);
+
       setMilestones(prev => prev.map(m => {
-        if (m.id === milestoneId) {
+        if (m.id === milestone.id) {
           return {
             ...m,
             teamsData: m.teamsData.map(t => t.id === teamId ? { ...t, grade: `${parsed}/20` } : t)
@@ -305,29 +614,10 @@ export default function MilestonesSetup() {
       alert("Grade submitted successfully!");
     } catch (err) {
       console.error("Error grading team:", err);
-      
-      // Save mock grade to localStorage if it's a mock team
-      if (typeof teamId === "string" && teamId.startsWith("t")) {
-        try {
-          const grades = getMockGrades();
-          grades[`${milestoneId}-${teamId}`] = `${parsed}/20`;
-          localStorage.setItem("mock_milestone_grades", JSON.stringify(grades));
-        } catch (e) {
-          console.error("Failed saving mock grade to localStorage:", e);
-        }
-      }
-
-      // Fallback local update
-      setMilestones(prev => prev.map(m => {
-        if (m.id === milestoneId) {
-          return {
-            ...m,
-            teamsData: m.teamsData.map(t => t.id === teamId ? { ...t, grade: `${parsed}/20` } : t)
-          };
-        }
-        return m;
-      }));
-      alert("Grade updated successfully!");
+      const message = err.message?.includes("does not belong")
+        ? "This team is not assigned to this milestone in the current project course. Please choose the team's allowed milestone."
+        : err.message || "Failed to submit grade.";
+      alert(message);
     }
   };
 
@@ -345,6 +635,7 @@ export default function MilestonesSetup() {
         isOverdue: false,
         lateCount: 0,
         teamsSubmittedCount: 0,
+        teamsTotalCount: 0,
         reqs: newMs.reqs,
         teamsData: []
       }
@@ -352,18 +643,15 @@ export default function MilestonesSetup() {
     setShowModal(false);
   };
 
-  const filterTabs = [
-    { k: "All", l: `All (${milestones.length})` },
-    { k: "On Progress", l: `On Progress (${milestones.filter(m => m.status === "On Progress").length})` },
-    { k: "Completed", l: `Completed (${milestones.filter(m => m.status === "Completed").length})` },
-    { k: "Pending", l: `Pending (${milestones.filter(m => m.status === "Pending" && !m.isOverdue).length})` },
-    { k: "Overdue", l: `Overdue (${milestones.filter(m => m.isOverdue).length})` }
-  ];
+  const filterTabs = TAB_CONFIG.map((tab) => ({
+    k: tab.k,
+    l: `${tab.label} (${getTabCount(tabCounts, tab.k, countForTab(milestones, tab.k))})`,
+  }));
 
   const filteredMilestones = milestones.filter(m => {
-    if (activeTab === "All") return true;
-    if (activeTab === "On Progress") return m.status === "On Progress";
-    if (activeTab === "Completed") return m.status === "Completed";
+    if (activeTab === "All") return !m.isOverdue;
+    if (activeTab === "On Progress") return m.status === "On Progress" && !m.isOverdue;
+    if (activeTab === "Completed") return m.status === "Completed" && !m.isOverdue;
     if (activeTab === "Pending") return m.status === "Pending" && !m.isOverdue;
     if (activeTab === "Overdue") return m.isOverdue;
     return true;
@@ -594,11 +882,16 @@ export default function MilestonesSetup() {
               <div style={{ textAlign: "center", padding: "40px", fontSize: "16px", color: "#6b7280" }}>
                 Loading Milestones...
               </div>
+            ) : filteredMilestones.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "40px", fontSize: "16px", color: "#6b7280" }}>
+                No milestones found for this tab.
+              </div>
             ) : filteredMilestones.map((m) => {
               const dotColor = getDotColor(m);
               const isCompleted = m.status === "Completed";
               const isOverdue = m.isOverdue;
-              const isOnProgress = m.status === "On Progress";
+              const canGrade = viewAs === "committee" && !isOverdue;
+              const showNoteInput = !isCompleted;
 
               return (
                 <div key={m.id} style={{ marginBottom: "32px" }}>
@@ -686,10 +979,10 @@ export default function MilestonesSetup() {
                             {isOverdue && (
                               <div style={{ marginTop: "4px" }}>
                                 <div style={{ color: "#ef4444", fontSize: "15px", fontWeight: "bold" }}>
-                                  Deadline was: Jan 30, 2025 (Missed)
+                                  Deadline was: {m.deadline.replace(/^Due:\s*/i, "")} (Missed)
                                 </div>
                                 <div style={{ color: "#4b5563", fontSize: "12px", marginTop: "2px" }}>
-                                  Teams missed the deadline: 1
+                                  Teams missed the deadline: {m.lateCount}
                                 </div>
                               </div>
                             )}
@@ -770,7 +1063,7 @@ export default function MilestonesSetup() {
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
                               <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
                                 <span style={{ fontSize: "13px", color: "#4b5563", fontWeight: 600 }}>
-                                  Teams Submitted : <span style={{ color: "#10b981" }}>{m.teamsSubmittedCount}</span>/5
+                                  Teams Submitted : <span style={{ color: "#10b981" }}>{m.teamsSubmittedCount}</span>/{m.teamsTotalCount}
                                 </span>
                                 <button
                                   onClick={() => handleToggleTable(m.id)}
@@ -800,7 +1093,7 @@ export default function MilestonesSetup() {
                           <div style={{ borderTop: "1px solid #f3f4f6", paddingTop: "12px", marginTop: "4px" }}>
                             <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
                               <span style={{ fontSize: "13px", color: "#4b5563", fontWeight: 600 }}>
-                                Teams Submitted : <span style={{ color: "#10b981" }}>{m.teamsSubmittedCount}</span>/5
+                                Teams Submitted : <span style={{ color: "#10b981" }}>{m.teamsSubmittedCount}</span>/{m.teamsTotalCount}
                               </span>
                               <button
                                 onClick={() => handleToggleTable(m.id)}
@@ -830,7 +1123,7 @@ export default function MilestonesSetup() {
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
                               <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
                                 <span style={{ fontSize: "13px", color: "#4b5563", fontWeight: 600 }}>
-                                  Teams Submitted : <span style={{ color: "#10b981" }}>{m.teamsSubmittedCount}</span>/5
+                                  Teams Submitted : <span style={{ color: "#10b981" }}>{m.teamsSubmittedCount}</span>/{m.teamsTotalCount}
                                 </span>
                                 <button
                                   onClick={() => handleToggleTable(m.id)}
@@ -873,7 +1166,7 @@ export default function MilestonesSetup() {
                         )}
 
                         {/* Notes input box */}
-                        {m.status !== "Pending" && (
+                        {showNoteInput && (
                           <div style={{
                             display: "flex",
                             alignItems: "center",
@@ -884,47 +1177,15 @@ export default function MilestonesSetup() {
                             background: "#ffffff",
                             boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
                             boxSizing: "border-box",
-                            width: "100%"
+                            width: m.status === "Pending" ? "240px" : "100%"
                           }}>
                             <FaEdit style={{ color: "#9ca3af", fontSize: "13px" }} />
                             <input
                               type="text"
                               value={notesState[m.id] || ""}
                               onChange={(e) => setNotesState({ ...notesState, [m.id]: e.target.value })}
-                              onKeyDown={(e) => e.key === "Enter" && handleAddNote(m.id)}
+                              onKeyDown={(e) => e.key === "Enter" && handleAddNote(m)}
                               placeholder="Add notes for students (press Enter to save)"
-                              style={{
-                                border: "none",
-                                outline: "none",
-                                fontSize: "13px",
-                                color: "#4b5563",
-                                width: "100%",
-                                background: "transparent"
-                              }}
-                            />
-                          </div>
-                        )}
-
-                        {m.status === "Pending" && (
-                          <div style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "8px",
-                            border: "1px solid #e5e7eb",
-                            borderRadius: "6px",
-                            padding: "8px 12px",
-                            background: "#ffffff",
-                            boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
-                            boxSizing: "border-box",
-                            width: "240px"
-                          }}>
-                            <FaEdit style={{ color: "#9ca3af", fontSize: "13px" }} />
-                            <input
-                              type="text"
-                              value={notesState[m.id] || ""}
-                              onChange={(e) => setNotesState({ ...notesState, [m.id]: e.target.value })}
-                              onKeyDown={(e) => e.key === "Enter" && handleAddNote(m.id)}
-                              placeholder="Add notes for students (press Enter)"
                               style={{
                                 border: "none",
                                 outline: "none",
@@ -990,13 +1251,22 @@ export default function MilestonesSetup() {
                                 <>
                                   <th style={{ padding: "12px 16px", fontWeight: 600 }}>Submission Date</th>
                                   <th style={{ padding: "12px 16px", fontWeight: 600 }}>Action</th>
-                                  {isCompleted && <th style={{ padding: "12px 16px", fontWeight: 600 }}>Grades</th>}
+                                  {canGrade && <th style={{ padding: "12px 16px", fontWeight: 600 }}>Grades</th>}
                                 </>
                               )}
                             </tr>
                           </thead>
                           <tbody>
-                            {m.teamsData.map((team, idx) => (
+                            {m.teamsData.length === 0 ? (
+                              <tr>
+                                <td
+                                  colSpan={isOverdue ? 3 : canGrade ? 5 : 4}
+                                  style={{ padding: "16px", color: "#6b7280", textAlign: "center" }}
+                                >
+                                  No teams found for this milestone.
+                                </td>
+                              </tr>
+                            ) : m.teamsData.map((team, idx) => (
                               <tr key={idx} style={{ borderBottom: "1px solid #e5e7eb" }}>
                                 <td style={{ padding: "12px 16px", fontWeight: 600, color: "#1b2d4c" }}>{team.name}</td>
 
@@ -1023,18 +1293,18 @@ export default function MilestonesSetup() {
                                       )}
                                     </td>
 
-                                    {isCompleted && (
+                                    {canGrade && (
                                       <td style={{ padding: "12px 16px" }}>
                                         {team.grade.includes("Add") ? (
                                           <span
-                                            onClick={() => handleGradeTeam(m.id, team.id, team.grade)}
+                                            onClick={() => handleGradeTeam(m, team)}
                                             style={{ color: "#0066FF", fontWeight: "bold", cursor: "pointer" }}
                                           >
                                             Add Grade <span style={{ color: "#6b7280", fontWeight: 500 }}>/ 20</span>
                                           </span>
                                         ) : (
                                           <span
-                                            onClick={() => handleGradeTeam(m.id, team.id, team.grade)}
+                                            onClick={() => handleGradeTeam(m, team)}
                                             style={{
                                               color: parseInt(team.grade.split("/")[0]) > 10 ? "#10b981" : "#ef4444",
                                               fontWeight: "bold",

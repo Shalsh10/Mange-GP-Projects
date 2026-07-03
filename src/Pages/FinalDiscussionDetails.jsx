@@ -5,6 +5,7 @@ import Sidebar from "../components/adminSidebar";
 import DocHeader from "../Components/Header";
 import DocSidebar from "../Components/Sidebar";
 import Admin from "../Services/Admin.model";
+import { SupervisorService } from "../Services/SupervisorServices";
 
 import {
   Box,
@@ -15,35 +16,16 @@ import {
 
 import "./FinalDiscussionDetails.css";
 
-const FALLBACK_DETAILS = {
-  project: {
-    title: "AI Mental Health Companion",
-    description: 'The "Smart Health Monitoring System" project focuses on developing an innovative solution for real-time tracking and analysis of vital health parameters. This system aims to provide individuals with comprehensive insights into their well-being, enabling proactive health management and timely interventions. It incorporates advanced sensor technology and data',
-    problem_statement: "The current healthcare landscape faces challenges in continuous patient monitoring outside clinical settings, leading to delayed interventions and inefficient management",
-    technologies: "Hardware: ESP32, Heart Rate & Temp Sensors.,Mobile App: Flutter (for iOS & Android).,Database: Firebase (Real-time data).,Cloud: Google Cloud (Storage & Hosting)."
-  },
-  team: {
-    members: [
-      { id: 1, name: "Mohamed Ali", image: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=100&h=100" },
-      { id: 2, name: "Yara Tarek", image: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=100&h=100" },
-      { id: 3, name: "Farida Khaled", image: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&w=100&h=100" },
-      { id: 4, name: "Shahd Mostafa", image: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=100&h=100" },
-      { id: 5, name: "Ahmed Kamal", image: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=100&h=100" },
-      { id: 6, name: "Rana Saleh", image: "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=100&h=100" }
-    ]
-  },
-  supervisorsList: [
-    { name: "Ahmed El-Nagar", image: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=100&h=100" },
-    { name: "Ahmed Fayez", image: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=100&h=100" },
-    { name: "Mohamed Qayed", image: "https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&w=100&h=100" }
-  ]
+const getImageUrl = (path) => {
+  if (!path) return "https://images.unsplash.com/photo-1631553127988-348ecb321a48?auto=format&fit=crop&w=800&q=80";
+  if (path.startsWith("http")) return path;
+  return `https://mango-attendant-handyman.ngrok-free.dev${path.startsWith("/") ? "" : "/"}${path}`;
 };
-
-const projectImage = "https://images.unsplash.com/photo-1631553127988-348ecb321a48?auto=format&fit=crop&w=800&q=80";
 
 export default function FinalDiscussionDetails() {
   const { id } = useParams();
   const [data, setData] = useState(null);
+  const [noData, setNoData] = useState(false);
 
   const userStr = localStorage.getItem("user");
   const user = userStr ? JSON.parse(userStr) : null;
@@ -54,27 +36,90 @@ export default function FinalDiscussionDetails() {
   }, [id]);
 
   const getTeam = async () => {
+    // Guard: don't call API if id is invalid
+    if (!id || id === 'undefined') {
+      console.warn("[FinalDiscussionDetails] id is undefined, skipping API call");
+      setNoData(true);
+      return;
+    }
+
     try {
-      const res = await Admin.viewTeams(id);
-      if (res && res.project) {
+      let res;
+      if (isAdmin) {
+        res = await Admin.viewTeams(id);
+      } else {
+        // Use supervisor endpoint
+        res = await SupervisorService.showDefenseCommittee(id);
+      }
+
+      console.log("[Debug] Defense committee response:", res);
+
+      if (res && (res.project || res.team || res.committee || res.data)) {
+        setData(res.data ?? res);
+      } else if (res && typeof res === 'object' && Object.keys(res).length > 0) {
+        // API returned something — use it directly
         setData(res);
       } else {
-        setData(FALLBACK_DETAILS);
+        setNoData(true);
       }
     } catch (err) {
-      console.warn("Failed viewTeams API, using fallback details:", err);
-      setData(FALLBACK_DETAILS);
+      console.warn("Failed to load defense committee details:", err);
+      setNoData(true);
     }
   };
 
-  if (!data) return null;
 
-  const supervisors = data.supervisors
-    ? [
+  if (!data && !noData) return null;
+
+  if (noData) {
+    // Show no data message in appropriate layout
+    const emptyContent = (
+      <div style={{ padding: '40px', textAlign: 'center', color: '#A0AEC0', fontFamily: 'Inter, sans-serif' }}>
+        No details available for this committee.
+      </div>
+    );
+    if (isAdmin) {
+      return (
+        <div className="admin-layout" style={{ display: 'flex', minHeight: '100vh', background: '#F8FAFC' }}>
+          <Sidebar />
+          <div className="main-content" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+            <Header />{emptyContent}
+          </div>
+        </div>
+      );
+    }
+    return (
+      <div className="doctor-layout-wrapper" style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', background: '#F7F9FB' }}>
+        <DocHeader />
+        <div className="doctor-layout-body" style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+          <DocSidebar />
+          <main className="doctor-layout-main" style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>{emptyContent}</main>
+        </div>
+      </div>
+    );
+  }
+
+  const supervisors = (() => {
+    const committeeMembers = data.defense_committee_members ?? data.committee_members;
+    if (committeeMembers) {
+      const docs = Array.isArray(committeeMembers.doctors)
+        ? committeeMembers.doctors.map(d => ({ name: d.name || d.full_name, image: getImageUrl(d.profile_image) }))
+        : [];
+      const tas = Array.isArray(committeeMembers.teaching_assistants)
+        ? committeeMembers.teaching_assistants.map(t => ({ name: t.name || t.full_name, image: getImageUrl(t.profile_image) }))
+        : [];
+      return [...docs, ...tas].filter(s => s.name);
+    }
+    if (data.supervisors) {
+      return [
         { name: data.supervisors.doctor?.name || data.supervisors.doctor?.full_name, image: "" },
         { name: data.supervisors.ta?.name || data.supervisors.ta?.full_name, image: "" }
-      ].filter(s => s.name)
-    : (data.supervisorsList || []);
+      ].filter(s => s.name);
+    }
+    return data.supervisorsList || [];
+  })();
+
+
 
   const pageContent = (
     <div className="discussion-details-page" style={{ padding: 0 }}>
@@ -90,7 +135,7 @@ export default function FinalDiscussionDetails() {
           </Typography>
 
           <img
-            src={projectImage}
+            src={getImageUrl(data.project?.image_url)}
             alt="Project hardware illustration"
             className="project-image"
             style={{ width: '100%', height: '340px', objectFit: 'cover', borderRadius: '8px', marginBottom: '20px' }}
@@ -130,25 +175,32 @@ export default function FinalDiscussionDetails() {
             </Typography>
 
             <div className="members-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
-              {data.team?.members?.map((member) => (
-                <div
-                  key={member.id}
-                  className="member-item"
-                  style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}
-                >
-                  <Avatar
-                    src={member.image}
-                    style={{ width: '48px', height: '48px', marginBottom: '6px', border: '2px solid #E2E8F0' }}
-                  />
-                  <Typography
-                    variant="caption"
-                    style={{ fontFamily: 'Inter, sans-serif', fontSize: '10px', color: '#0052CC', fontWeight: '600', width: '100%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+              {data.team?.members && data.team.members.length > 0 ? (
+                data.team.members.map((member) => (
+                  <div
+                    key={member.id}
+                    className="member-item"
+                    style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}
                   >
-                    {member.name}
-                  </Typography>
-                </div>
-              ))}
+                    <Avatar
+                      src={getImageUrl(member.profile_image || member.image)}
+                      style={{ width: '48px', height: '48px', marginBottom: '6px', border: '2px solid #E2E8F0' }}
+                    />
+                    <Typography
+                      variant="caption"
+                      style={{ fontFamily: 'Inter, sans-serif', fontSize: '10px', color: '#0052CC', fontWeight: '600', width: '100%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                    >
+                      {member.name || member.full_name}
+                    </Typography>
+                  </div>
+                ))
+              ) : (
+                <Typography variant="caption" style={{ color: '#718096', gridColumn: 'span 3', textAlign: 'center', fontFamily: 'Inter, sans-serif' }}>
+                  {data.team?.members_count ? `${data.team.members_count} Member(s)` : "No member details listed"}
+                </Typography>
+              )}
             </div>
+
           </Paper>
 
           {/* Supervision Card */}
@@ -191,29 +243,35 @@ export default function FinalDiscussionDetails() {
               Tech Stack
             </Typography>
 
-            {data.project?.technologies
-              ?.split(",")
-              .map((tech, idx) => {
-                const parts = tech.split(":");
-                if (parts.length > 1) {
+            {data.project?.technologies ? (
+              data.project.technologies
+                .split(",")
+                .map((tech, idx) => {
+                  const parts = tech.split(":");
+                  if (parts.length > 1) {
+                    return (
+                      <Typography
+                        key={idx}
+                        style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', color: '#4A5568', marginBottom: '10px', lineHeight: '1.5' }}
+                      >
+                        <strong style={{ color: '#0052CC' }}>{parts[0].trim()}:</strong>{parts.slice(1).join(":").trim()}
+                      </Typography>
+                    );
+                  }
                   return (
                     <Typography
                       key={idx}
-                      style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', color: '#4A5568', marginBottom: '10px', lineHeight: '1.5' }}
+                      style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', color: '#4A5568', marginBottom: '8px' }}
                     >
-                      <strong style={{ color: '#0052CC' }}>{parts[0].trim()}:</strong>{parts.slice(1).join(":").trim()}
+                      • {tech.trim()}
                     </Typography>
                   );
-                }
-                return (
-                  <Typography
-                    key={idx}
-                    style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', color: '#4A5568', marginBottom: '8px' }}
-                  >
-                    • {tech.trim()}
-                  </Typography>
-                );
-              })}
+                })
+            ) : (
+              <Typography variant="caption" style={{ color: '#718096', fontFamily: 'Inter, sans-serif' }}>
+                No tech stack details provided.
+              </Typography>
+            )}
           </Paper>
         </div>
       </div>

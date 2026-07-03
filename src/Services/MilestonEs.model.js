@@ -18,20 +18,26 @@ class Milestones {
 
   // 1. GET milestones with tabs
   static getMilestonesWithTabs(viewAs = "supervisor", tab = "All") {
-    let tabParam = tab.toLowerCase().replace(" ", "_");
-    if (tabParam === "all") {
-      return submitRequestAsync(`supervisor/milestones?view_as=${viewAs}`, "GET");
-    }
-    return submitRequestAsync(`supervisor/milestones?view_as=${viewAs}&tab=${tabParam}`, "GET");
+    const params = new URLSearchParams({
+      view_as: viewAs,
+      tab: tab.toLowerCase().replace(/\s+/g, "_"),
+    });
+
+    return submitRequestAsync(`supervisor/milestones?${params.toString()}`, "GET");
   }
 
   // 2. GET Teams in Milestone
   static getTeamsInMilestone(milestoneId, viewAs = "supervisor", type = "") {
-    let url = `supervisor/milestones/${milestoneId}/teams?view_as=${viewAs}`;
+    const params = new URLSearchParams({ view_as: viewAs });
+
     if (type) {
-      url += `&type=${type}`;
+      params.set("type", type);
     }
-    return submitRequestAsync(url, "GET");
+
+    return submitRequestAsync(
+      `supervisor/milestones/${milestoneId}/teams?${params.toString()}`,
+      "GET"
+    );
   }
 
   // 3. POST Add note on milestone for student
@@ -71,6 +77,13 @@ class Milestones {
       "doctor/milestone-committees/grades",
       "POST",
       formData
+    );
+  }
+
+  static getAllowableMilestones(teamId) {
+    return submitRequestAsync(
+      `doctor/committee/teams/${teamId}/available-milestones`,
+      "GET"
     );
   }
 }

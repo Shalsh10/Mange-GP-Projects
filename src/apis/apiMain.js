@@ -1,4 +1,4 @@
-const BASE_URL = 'https://1fcb-154-182-18-194.ngrok-free.app/api/';
+const BASE_URL = 'https://mango-attendant-handyman.ngrok-free.dev/api';
 export const customFetch = async (endpoint, options = {}) => {
   const token = localStorage.getItem("token");
 
@@ -21,14 +21,31 @@ export const customFetch = async (endpoint, options = {}) => {
     headers,
   };
 
-  const response = await fetch(`${BASE_URL}${endpoint}`, config);
+  const url = `${BASE_URL}/${endpoint}`.replace(/\/+/g, "/").replace(":/", "://");
+  const response = await fetch(url, config);
 
   if (!response.ok) {
+    if (response.status === 401) {
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+      if (typeof window !== "undefined") {
+        window.location.href = "/login";
+      }
+    }
     // حاول تقرأ رسالة الخطأ من الـ body
     let errorMsg = `خطأ في الطلب: ${response.statusText}`;
     try {
       const errBody = await response.json();
-      errorMsg = errBody?.message || errBody?.error || errorMsg;
+      if (errBody?.errors) {
+        const errorList = Object.values(errBody.errors).flat();
+        if (errorList.length > 0) {
+          errorMsg = errorList.join(" | ");
+        } else {
+          errorMsg = errBody.message || errorMsg;
+        }
+      } else {
+        errorMsg = errBody?.message || errBody?.error || errorMsg;
+      }
     } catch { /* ignore parse error */ }
     throw new Error(errorMsg);
   }

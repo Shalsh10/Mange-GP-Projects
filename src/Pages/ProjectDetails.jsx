@@ -24,6 +24,7 @@ import SendAnnouncementModal from "./SendAnnouncementModal";
 import NewMeetingModal from "../Components/NewMeetingModal";
 import { SupervisorService } from "../Services/SupervisorServices";
 import { toast } from "react-hot-toast";
+import dayjs from "dayjs";
 
 // Import local images
 import blockchainImg from "../assets/blockchain_project.png";
@@ -395,28 +396,36 @@ const pdCss = `
 
 .pd-table {
   width: 100%;
-  border-collapse: collapse;
-  border: 1px solid #CBD5E0;
-  border-radius: 8px;
-  overflow: hidden;
+  border-collapse: separate;
+  border-spacing: 8px 10px;
+  border: 0;
+  background: transparent;
+  overflow: visible;
 }
 
 .pd-table th {
-  background: #EBF1FA;
-  color: #2D3748;
+  background: #F1F1F4;
+  color: #4A5568;
   font-size: 13px;
   font-weight: 700;
-  text-align: left;
+  text-align: center;
   padding: 12px 16px;
-  border: 1px solid #CBD5E0;
+  border: 1.5px solid #A0AEC0;
+  border-radius: 8px;
 }
 
 .pd-table td {
   padding: 14px 16px;
   font-size: 13px;
   color: #4A5568;
-  border: 1px solid #CBD5E0;
+  border: 1.5px solid #CBD5E0;
+  border-radius: 8px;
   background: #ffffff;
+  text-align: center;
+}
+
+.pd-table th:first-child, .pd-table td:first-child {
+  text-align: left;
 }
 
 .pd-file-name-cell {
@@ -554,40 +563,55 @@ const pdCss = `
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin: 20px 0;
+  margin: 16px 0;
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  padding: 10px 14px;
+  background: #ffffff;
+}
+
+.pd-grade-input-row > span {
   font-size: 14px;
-  color: #4A5568;
-  font-weight: 600;
+  color: #718096;
+  font-weight: 500;
 }
 
 .pd-grade-input-box {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  border: 1px solid #CBD5E0;
+  border-radius: 6px;
+  padding: 6px 12px;
+  background: #ffffff;
 }
 
 .pd-grade-input {
-  width: 48px;
-  height: 34px;
-  border: 1px solid #E2E8F0;
-  border-radius: 6px;
+  width: 32px;
+  height: 20px;
+  border: 0 !important;
   text-align: center;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
   color: #1A202C;
   outline: none;
+  padding: 0;
 }
 
 .pd-grade-btn {
-  width: 100%;
-  height: 38px;
+  display: block;
+  width: fit-content;
+  min-width: 120px;
+  height: 34px;
   background: #0052CC;
   color: #ffffff;
   border: 0;
-  border-radius: 8px;
+  border-radius: 6px;
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
   cursor: pointer;
+  margin: 16px auto 0; /* Center horizontally! */
+  padding: 0 16px;
   transition: background 0.2s;
 }
 
@@ -720,13 +744,26 @@ export default function ProjectDashboard() {
   const location = useLocation();
 
   const [currentTeamId, setCurrentTeamId] = useState("A");
-  const [teamDetails, setTeamDetails] = useState(teamsDataset.A);
+  const [teamDetails, setTeamDetails] = useState({
+    title: "Loading...",
+    description: "",
+    image: blockchainImg,
+    ta: "Teacher Assistant",
+    status: "On Track",
+    statusColor: "#22C55E",
+    statusBg: "#DCFCE7",
+    progress: 0,
+    committee: [],
+    files: [],
+    milestones: []
+  });
   const [realTeamId, setRealTeamId] = useState(null);
   const [projectCourseId, setProjectCourseId] = useState("2");
   
   const [selectedFile, setSelectedFile] = useState(null);
   const [rawMilestones, setRawMilestones] = useState([]);
-  const [gradeVal, setGradeVal] = useState("19");
+  const [allowableMilestones, setAllowableMilestones] = useState([]);
+  const [gradeVal, setGradeVal] = useState("");
   const [selectedMilestone, setSelectedMilestone] = useState("Choose milestone");
   
   const [showAnnouncement, setShowAnnouncement] = useState(false);
@@ -735,11 +772,201 @@ export default function ProjectDashboard() {
   const [gradingLoading, setGradingLoading] = useState(false);
 
   const gradeCardRef = useRef(null);
+  const filesCardRef = useRef(null);
+  const [filesHighlight, setFilesHighlight] = useState(false);
+
+  const loadData = async () => {
+    const params = new URLSearchParams(location.search);
+    const teamId = params.get("teamId") || "A";
+    const type = params.get("type") || "supervised";
+    const mappedId = teamId.toUpperCase();
+
+    try {
+      let data = null;
+      try {
+        const res = type === "committee"
+          ? await SupervisorService.viewTeam(teamId)
+          : await SupervisorService.viewSupervisedTeam(teamId);
+        data = res?.data || res;
+      } catch (err) {
+        console.warn(`Failed primary endpoint for type ${type}, trying fallback endpoint...`, err);
+        try {
+          const resFallback = type === "committee"
+            ? await SupervisorService.viewSupervisedTeam(teamId)
+            : await SupervisorService.viewTeam(teamId);
+          data = resFallback?.data || resFallback;
+        } catch (fallbackErr) {
+          console.error("Both endpoints failed to load details:", fallbackErr);
+        }
+      }
+
+      if (data) {
+        console.log("✅ API Response for Team Details:", data);
+        
+        const teamObj = data.team || {};
+        const projectObj = data.project || {};
+        const supervisorsObj = data.supervisors || {};
+        const committeeObj = data.milestone_committee || {};
+
+        if (teamObj.id) {
+          setRealTeamId(teamObj.id);
+          setCurrentTeamId(teamObj.id);
+        }
+        if (teamObj.project_course_id) {
+          setProjectCourseId(teamObj.project_course_id);
+        }
+
+        // 1. Gather milestones across all courses
+        const extractedMilestones = [];
+        if (Array.isArray(data.courses)) {
+          data.courses.forEach(course => {
+            if (Array.isArray(course.milestones)) {
+              course.milestones.forEach(m => {
+                if (!extractedMilestones.some(ex => ex.id === m.id)) {
+                  const score = m.grade?.grade ?? null;
+                  const max = m.max_score ?? "20";
+                  const lowerStatus = String(m.status || m.milestone_status || "Locked").toLowerCase();
+                  
+                  let tableStatus = "Locked";
+                  if (lowerStatus === "completed") tableStatus = "Completed";
+                  else if (lowerStatus === "delayed") tableStatus = "Delayed";
+                  else if (lowerStatus === "in_progress" || lowerStatus === "in progress" || lowerStatus === "on_progress" || lowerStatus === "active") tableStatus = "In Progress";
+
+                  let resolvedDeadline = "TBD";
+                  if (course.current_milestone && course.current_milestone.id === m.id) {
+                    resolvedDeadline = course.current_milestone.deadline 
+                      ? dayjs(course.current_milestone.deadline).format("MMM DD, YYYY") 
+                      : "TBD";
+                  }
+
+                  extractedMilestones.push({
+                    id: m.id,
+                    milestone: m.title || m.name || "Milestone",
+                    status: tableStatus,
+                    deadline: m.deadline ? dayjs(m.deadline).format("MMM DD, YYYY") : resolvedDeadline,
+                    grade: score !== null ? `${parseFloat(score)}/${parseFloat(max)}` : "Add Grade",
+                    max_score: max,
+                    hasActions: lowerStatus !== "locked"
+                  });
+                }
+              });
+            }
+          });
+        }
+
+        if (extractedMilestones.length === 0 && teamsDataset[mappedId]) {
+          extractedMilestones.push(...(teamsDataset[mappedId]?.milestones || []));
+        }
+
+        // Select the active milestone for grading
+        const activeMs = extractedMilestones.find(
+          (m) => m.status !== "Completed" && m.status !== "Locked"
+        ) || extractedMilestones[0];
+        if (activeMs) {
+          setSelectedMilestone(activeMs.milestone);
+        }
+
+        // Set raw milestones for fallback checks
+        setRawMilestones(extractedMilestones);
+
+        // Fetch allowable milestones
+        try {
+          const allowable = await SupervisorService.getAllowableMilestones(teamId);
+          const list = allowable?.data || allowable || [];
+          setAllowableMilestones(Array.isArray(list) ? list : []);
+          if (Array.isArray(list) && list.length > 0) {
+            setSelectedMilestone(list[0].title || list[0].name || list[0].milestone || "Choose milestone");
+          } else {
+            const localMilestones = extractedMilestones.filter(m => m.status !== "Locked").map(m => ({
+              id: m.id || "2",
+              title: m.milestone
+            }));
+            setAllowableMilestones(localMilestones);
+          }
+        } catch (allowableErr) {
+          console.warn("Failed fetching allowable milestones:", allowableErr);
+          const localMilestones = extractedMilestones.filter(m => m.status !== "Locked").map(m => ({
+            id: m.id || "2",
+            title: m.milestone
+          }));
+          setAllowableMilestones(localMilestones);
+        }
+
+        // 2. Fetch submitted files
+        let collectedFiles = [];
+        if (Array.isArray(data.submitted_files)) {
+          collectedFiles = data.submitted_files.map(f => ({
+            id: f.id,
+            name: f.file_name || "File.pdf",
+            milestone: f.milestone || "Submission",
+            date: f.uploaded_at ? dayjs(f.uploaded_at).format("MMM DD, YYYY") : "Recently",
+            feedback: f.feedback ? "Given" : "Give Feedback",
+            rawFeedback: typeof f.feedback === "object" ? (f.feedback?.feedback || null) : (f.feedback || null),
+            icon: f.file_name?.endsWith(".mp4") ? "mp4" : (f.file_name?.endsWith(".fig") ? "fig" : "pdf")
+          }));
+        }
+
+        if (collectedFiles.length === 0 && teamsDataset[mappedId]) {
+          collectedFiles.push(...(teamsDataset[mappedId]?.files || []));
+        }
+
+        // 3. Build committee list
+        const committeeList = [];
+        if (Array.isArray(committeeObj.doctors)) {
+          committeeList.push(...committeeObj.doctors.map(d => d.name));
+        }
+        if (Array.isArray(committeeObj.tas)) {
+          committeeList.push(...committeeObj.tas.map(t => t.name));
+        }
+        if (committeeList.length === 0) {
+          committeeList.push("Khaled Kareem", "Mariam Emad", "Abanoub Yaqoub");
+        }
+
+        // 4. Resolve team project image
+        let resolvedImage = blockchainImg;
+        if (projectObj.image_url) {
+          const path = projectObj.image_url;
+          resolvedImage = path.startsWith("http") ? path : `https://mango-attendant-handyman.ngrok-free.dev${path.startsWith("/") ? "" : "/"}${path}`;
+        } else {
+          if (mappedId === "B") resolvedImage = aiHealthImg;
+          else if (mappedId === "C" || mappedId === "E") resolvedImage = vrImg;
+          else if (mappedId === "D") resolvedImage = iotImg;
+        }
+
+        // 5. Update team details state
+        const teamStatus = data.overall_status || teamObj.overall_status || "On Track";
+        setTeamDetails({
+          title: projectObj.title || "Project Title",
+          description: projectObj.description || "Project Description",
+          image: resolvedImage,
+          ta: supervisorsObj.ta?.name || "Teacher Assistant",
+          status: teamStatus === "on_track" ? "On Track" : (teamStatus === "delayed" ? "Delayed" : (teamStatus === "pending_submission" ? "Pending Submission" : teamStatus)),
+          statusColor: teamStatus === "delayed" ? "#EF4444" : (teamStatus === "pending_submission" ? "#F97316" : "#22C55E"),
+          statusBg: teamStatus === "delayed" ? "#FEE2E2" : (teamStatus === "pending_submission" ? "#FFEDD5" : "#DCFCE7"),
+          progress: data.overall_progress ?? 50,
+          committee: committeeList,
+          files: collectedFiles,
+          milestones: extractedMilestones,
+          maxSupervisorScore: data.max_supervisor_score ?? 40
+        });
+
+        let existingGrade = "";
+        if (Array.isArray(data.courses)) {
+          const matchedCourse = data.courses.find(c => String(c.project_course?.id) === String(teamObj.project_course_id || "2"));
+          if (matchedCourse && matchedCourse.supervisor_grade) {
+            existingGrade = parseFloat(matchedCourse.supervisor_grade.grade).toString();
+          }
+        }
+        setGradeVal(existingGrade);
+      }
+    } catch (err) {
+      console.error("Error loading team details:", err);
+    }
+  };
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const teamId = params.get("teamId") || "A";
-    const type = params.get("type") || "supervised";
     const mappedId = teamId.toUpperCase();
     
     if (teamsDataset[mappedId]) {
@@ -754,76 +981,20 @@ export default function ProjectDashboard() {
       }
     }
 
-    (async () => {
-      try {
-        const res = type === "committee"
-          ? await SupervisorService.viewTeam(teamId)
-          : await SupervisorService.viewSupervisedTeam(teamId);
-
-        console.log("Team Details Response:", res);
-        const data = res?.data || res;
-        if (data) {
-          const teamObj = data.team || data;
-          if (teamObj?.id) {
-            setRealTeamId(teamObj.id);
-          }
-          if (teamObj?.project_course_id) {
-            setProjectCourseId(teamObj.project_course_id);
-          }
-
-          if (Array.isArray(data.milestones)) {
-            setRawMilestones(data.milestones);
-          }
-
-          let localImg = blockchainImg;
-          if (mappedId === "B") localImg = aiHealthImg;
-          else if (mappedId === "C" || mappedId === "E") localImg = vrImg;
-          else if (mappedId === "D") localImg = iotImg;
-
-          const adaptedMilestones = data.milestones?.map(m => ({
-            milestone: m.title || m.milestone || m.name,
-            status: m.status || "Completed",
-            grade: m.grade ? `${m.grade}/20` : "Add Grade",
-            hasActions: m.status !== "Locked"
-          })) || (teamsDataset[mappedId] ? teamsDataset[mappedId].milestones : []);
-
-          const activeMs = adaptedMilestones.find(
-            (m) => m.status !== "Completed" && m.status !== "Locked"
-          );
-          if (activeMs) {
-            setSelectedMilestone(activeMs.milestone);
-          }
-
-          setTeamDetails({
-            title: data.project?.title || data.title || (teamsDataset[mappedId] ? teamsDataset[mappedId].title : "Project Title"),
-            description: data.project?.description || data.description || (teamsDataset[mappedId] ? teamsDataset[mappedId].description : "Description"),
-            image: localImg,
-            ta: data.ta?.name || data.ta || (teamsDataset[mappedId] ? teamsDataset[mappedId].ta : "Teacher Assistant"),
-            status: data.status || (teamsDataset[mappedId] ? teamsDataset[mappedId].status : "On Track"),
-            statusColor: data.status === "Delayed" ? "#EF4444" : (data.status === "Pending" ? "#F97316" : "#22C55E"),
-            statusBg: data.status === "Delayed" ? "#FEE2E2" : (data.status === "Pending" ? "#FFEDD5" : "#DCFCE7"),
-            progress: data.progress || (teamsDataset[mappedId] ? teamsDataset[mappedId].progress : 50),
-            committee: data.committee?.map(c => c.name || c) || (teamsDataset[mappedId] ? teamsDataset[mappedId].committee : ["Khaled Kareem", "Mariam Emad", "Abanoub Yaqoub"]),
-            files: data.files?.map((f, i) => ({
-              id: f.id || i,
-              name: f.name || f.filename || "File.pdf",
-              milestone: f.milestone || "Project Discovery",
-              date: f.created_at || f.date || "Nov 20, 2025",
-              feedback: f.feedback_given ? "Given" : "Give Feedback",
-              icon: f.extension || (f.name?.endsWith(".mp4") ? "mp4" : (f.name?.endsWith(".fig") ? "fig" : "pdf"))
-            })) || (teamsDataset[mappedId] ? teamsDataset[mappedId].files : []),
-            milestones: adaptedMilestones
-          });
-        }
-      } catch (err) {
-        console.warn("Failed loading team details from API, using default mock details. Error:", err);
-      }
-    })();
+    loadData();
 
     if (params.get("giveFeedback") === "true") {
-      const files = teamsDataset[mappedId]?.files || teamsDataset.A.files;
-      const fileToFeedback = files.find(f => f.feedback === "Give Feedback") || files[files.length - 1];
-      setSelectedFile(fileToFeedback);
+      setFilesHighlight(true);
+      setTimeout(() => {
+        if (filesCardRef.current) {
+          filesCardRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+      }, 500);
+
+      const timer = setTimeout(() => {
+        setFilesHighlight(false);
+      }, 6000);
+      return () => clearTimeout(timer);
     }
 
     if (params.get("grade") === "true") {
@@ -852,6 +1023,12 @@ export default function ProjectDashboard() {
       return;
     }
 
+    const numericGrade = parseFloat(gradeVal);
+    if (isNaN(numericGrade) || numericGrade < 0 || numericGrade > maxScoreDenom) {
+      toast.error(`Please enter a valid grade between 0 and ${maxScoreDenom}`);
+      return;
+    }
+
     try {
       setGradingLoading(true);
       
@@ -865,7 +1042,8 @@ export default function ProjectDashboard() {
       }
 
       if (type === "committee") {
-        const found = rawMilestones.find(m => (m.title || m.milestone || m.name) === selectedMilestone);
+        const found = allowableMilestones.find(m => (m.title || m.name || m.milestone) === selectedMilestone)
+                   || rawMilestones.find(m => (m.title || m.milestone || m.name) === selectedMilestone);
         const milestoneId = found?.id || "2";
 
         const formData = new FormData();
@@ -884,24 +1062,14 @@ export default function ProjectDashboard() {
       }
       
       toast.success("Grade submitted successfully! 🎓");
-      
-      // Update local state grade value
-      setTeamDetails((prev) => {
-        const updatedMilestones = prev.milestones.map((m) => {
-          if (m.milestone === selectedMilestone) {
-            return { ...m, grade: `${gradeVal}/20`, status: "Completed" };
-          }
-          return m;
-        });
-        return { ...prev, milestones: updatedMilestones };
-      });
+      loadData();
     } catch (err) {
       console.warn("Failed API submit grade, using mock success. Error:", err);
       toast.success("Grade submitted successfully! 🎓 (Mock)");
       setTeamDetails((prev) => {
         const updatedMilestones = prev.milestones.map((m) => {
           if (m.milestone === selectedMilestone) {
-            return { ...m, grade: `${gradeVal}/20`, status: "Completed" };
+            return { ...m, grade: `${gradeVal}/${maxScoreDenom}`, status: "Completed" };
           }
           return m;
         });
@@ -918,6 +1086,16 @@ export default function ProjectDashboard() {
       navigate("/all-discussions");
     }, 800);
   };
+
+  const activeMs = teamDetails.milestones?.find(
+    (m) => String(m.status).toLowerCase() !== "completed" && String(m.status).toLowerCase() !== "locked"
+  ) || teamDetails.milestones?.[0] || { milestone: "None", deadline: "TBD" };
+
+  const params = new URLSearchParams(location.search);
+  const selectedMilestoneObj = teamDetails.milestones?.find(m => (m.milestone === selectedMilestone || m.title === selectedMilestone));
+  const maxScoreDenom = params.get("type") === "supervised"
+    ? (teamDetails.maxSupervisorScore || 40)
+    : (selectedMilestoneObj?.max_score ? parseFloat(selectedMilestoneObj.max_score) : 20);
 
   return (
     <>
@@ -953,11 +1131,11 @@ export default function ProjectDashboard() {
               <div className="pd-milestone-box">
                 <div className="pd-m-row">
                   <span className="pd-m-label">Current Milestone: </span>
-                  <span className="pd-m-value">User Interface Design & Prototyping</span>
+                  <span className="pd-m-value">{activeMs.milestone}</span>
                 </div>
                 <div className="pd-m-row">
                   <span className="pd-m-label">Deadline: </span>
-                  <span className="pd-m-value">Jan 30, 2026</span>
+                  <span className="pd-m-value">{activeMs.deadline || "TBD"}</span>
                 </div>
               </div>
 
@@ -991,55 +1169,34 @@ export default function ProjectDashboard() {
 
             {/* Steps Timeline Row */}
             <div className="pd-timeline-row">
-              <div className="pd-timeline-step">
-                <div className="pd-timeline-circle" />
-                <span className="pd-timeline-label">Initial Proposal</span>
-              </div>
-              <div className="pd-timeline-line-segment completed" />
+              {teamDetails.milestones && teamDetails.milestones.map((m, idx) => {
+                const isLast = idx === teamDetails.milestones.length - 1;
+                const statusLower = String(m.status).toLowerCase();
+                let circleClass = "locked";
+                if (statusLower === "completed") {
+                  circleClass = "completed";
+                } else if (statusLower === "in progress" || statusLower === "in_progress" || statusLower === "active") {
+                  circleClass = "active";
+                }
 
-              <div className="pd-timeline-step">
-                <div className="pd-timeline-circle" />
-                <span className="pd-timeline-label">Requirements & Planning</span>
-              </div>
-              <div className="pd-timeline-line-segment completed" />
+                let lineClass = "locked";
+                if (statusLower === "completed") {
+                  lineClass = "completed";
+                } else if (statusLower === "in progress" || statusLower === "in_progress" || statusLower === "active") {
+                  lineClass = "in-progress";
+                }
 
-              <div className="pd-timeline-step">
-                <div
-                  className={`pd-timeline-circle ${
-                    teamDetails.progress >= 65 ? "" : "active"
-                  }`}
-                />
-                <span className="pd-timeline-label">Design & Development</span>
-              </div>
-              <div
-                className={`pd-timeline-line-segment ${
-                  teamDetails.progress >= 65 ? "completed" : "in-progress"
-                }`}
-              />
-
-              <div className="pd-timeline-step">
-                <div
-                  className={`pd-timeline-circle ${
-                    teamDetails.progress >= 75 ? "completed" : "locked"
-                  }`}
-                />
-                <span className="pd-timeline-label">Internal Defense</span>
-              </div>
-              <div
-                className={`pd-timeline-line-segment ${
-                  teamDetails.progress >= 80 ? "completed" : "locked"
-                }`}
-              />
-
-              <div className="pd-timeline-step" style={{ position: "relative" }}>
-                <div
-                  className={`pd-timeline-circle ${
-                    teamDetails.progress >= 90 ? "completed" : "locked"
-                  }`}
-                />
-                <Trophy size={14} className="pd-timeline-trophy" />
-                <span className="pd-timeline-label">Final Defense</span>
-              </div>
+                return (
+                  <React.Fragment key={idx}>
+                    <div className="pd-timeline-step" style={{ position: "relative" }}>
+                      <div className={`pd-timeline-circle ${circleClass}`} />
+                      {isLast && <Trophy size={14} className="pd-timeline-trophy" />}
+                      <span className="pd-timeline-label">{m.milestone}</span>
+                    </div>
+                    {!isLast && <div className={`pd-timeline-line-segment ${lineClass}`} />}
+                  </React.Fragment>
+                );
+              })}
             </div>
 
             {/* Legend Box */}
@@ -1064,7 +1221,10 @@ export default function ProjectDashboard() {
           </article>
 
           {/* Card 3: Submitted Files */}
-          <article className="pd-card pd-table-card">
+          <article
+            ref={filesCardRef}
+            className={`pd-card pd-table-card ${filesHighlight ? "pd-card-highlight" : ""}`}
+          >
             <h2 className="pd-card-subtitle">Submitted Files</h2>
             {teamDetails.files.length === 0 ? (
               <div style={{ color: "#718096", fontSize: 13, fontStyle: "italic" }}>No files submitted yet.</div>
@@ -1104,13 +1264,13 @@ export default function ProjectDashboard() {
                       <td>{file.milestone}</td>
                       <td>{file.date}</td>
                       <td>
-                        {file.feedback === "Given" ? (
-                          <span className="pd-feedback-given">Given</span>
-                        ) : (
-                          <span className="pd-feedback-link" onClick={() => setSelectedFile(file)}>
-                            Give Feedback
-                          </span>
-                        )}
+                        <span
+                          className="pd-feedback-link"
+                          onClick={() => setSelectedFile(file)}
+                          style={{ cursor: "pointer", fontWeight: "600" }}
+                        >
+                          {file.feedback === "Given" ? "Edit Feedback" : "Give Feedback"}
+                        </span>
                       </td>
                     </tr>
                   ))}
@@ -1128,7 +1288,6 @@ export default function ProjectDashboard() {
                   <th>Milestone</th>
                   <th>Status</th>
                   <th>Grade</th>
-                  <th>Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -1163,43 +1322,9 @@ export default function ProjectDashboard() {
                     </td>
                     <td>
                       {m.grade === "Add Grade" ? (
-                        <span
-                          className="pd-grade-link"
-                          style={{ cursor: "pointer" }}
-                          onClick={() => {
-                            setSelectedMilestone(m.milestone);
-                            if (gradeCardRef.current) {
-                              gradeCardRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
-                            }
-                          }}
-                        >
-                          Add Grade
-                        </span>
+                        <span>—</span>
                       ) : (
                         <span>{m.grade}</span>
-                      )}
-                      {m.grade === "Add Grade" && " / 20"}
-                    </td>
-                    <td>
-                      {m.hasActions ? (
-                        <div className="pd-action-links">
-                          <span
-                            className="pd-action-link"
-                            onClick={() => toast.success(`Editing ${m.milestone}...`, { id: "edit-ms" })}
-                          >
-                            <Edit size={11} />
-                            <span>Edit</span>
-                          </span>
-                          <span
-                            className="pd-action-link"
-                            onClick={() => toast.success(`Deactivated milestone ${m.milestone}`, { id: "deac-ms" })}
-                          >
-                            <Ban size={11} />
-                            <span>Deactivate</span>
-                          </span>
-                        </div>
-                      ) : (
-                        <span>—</span>
                       )}
                     </td>
                   </tr>
@@ -1233,23 +1358,7 @@ export default function ProjectDashboard() {
           >
             <h2 className="pd-grade-milestone-title">Grade Team</h2>
 
-            <div className="pd-grade-field">
-              <select
-                className="pd-grade-select"
-                value={selectedMilestone}
-                onChange={(e) => setSelectedMilestone(e.target.value)}
-                disabled={gradingLoading}
-              >
-                <option value="Choose milestone" disabled>Choose milestone</option>
-                {teamDetails.milestones
-                  .filter((m) => m.status !== "Locked")
-                  .map((m) => (
-                    <option key={m.milestone} value={m.milestone}>
-                      {m.milestone}
-                    </option>
-                  ))}
-              </select>
-            </div>
+
 
             <div className="pd-grade-input-row">
               <span>Grade</span>
@@ -1261,7 +1370,7 @@ export default function ProjectDashboard() {
                   onChange={(e) => setGradeVal(e.target.value)}
                   disabled={gradingLoading}
                 />
-                <span>/ 20</span>
+                <span>/ {maxScoreDenom}</span>
               </div>
             </div>
 
@@ -1294,16 +1403,7 @@ export default function ProjectDashboard() {
           onClose={() => setSelectedFile(null)}
           onSend={(file, feedback) => {
             setSelectedFile(null);
-            // Update local state to show feedback given
-            setTeamDetails(prev => {
-              const updatedFiles = prev.files.map(f => {
-                if (f.id === file.id) {
-                  return { ...f, feedback: "Given" };
-                }
-                return f;
-              });
-              return { ...prev, files: updatedFiles };
-            });
+            loadData();
           }}
         />
       )}

@@ -158,6 +158,12 @@ export default function JoinRequests() {
   const [actionLoading, setActionLoading] = useState(null);
   const [activeTab, setActiveTab] = useState("All"); // All, pending, accepted, rejected
   const [selectedTeamMembers, setSelectedTeamMembers] = useState(null); // null or list of members
+  const [summaryCounts, setSummaryCounts] = useState({
+    all: 0,
+    pending: 0,
+    accepted: 0,
+    rejected: 0
+  });
 
   const getMockRequestStatus = () => {
     try {
@@ -214,61 +220,78 @@ export default function JoinRequests() {
       const response = await Requests.getDoctorRequests(appliedFilters);
       console.log("Raw response from Requests.getDoctorRequests:", response);
       
-      const data = response?.data?.data || response?.data || response || [];
+      const resData = response?.data || response?.data?.data || response || {};
+      const data = Array.isArray(resData) ? resData : (Array.isArray(resData.data) ? resData.data : []);
       console.log("Extracted requests array (data):", data);
       
-      if (Array.isArray(data) && data.length > 0) {
-        const formatted = data.map((item, index) => {
-          console.log(`Processing item ${index}:`, item);
-          // Parse status safely (handle 0/1/2 or pending/accepted/rejected)
-          const rawStatus = String(item.status !== undefined && item.status !== null ? item.status : "").toLowerCase().trim();
-          let parsedStatus = "pending";
-          if (rawStatus === "accepted" || rawStatus === "1" || rawStatus === "approved") {
-            parsedStatus = "accepted";
-          } else if (rawStatus === "rejected" || rawStatus === "2" || rawStatus === "declined") {
-            parsedStatus = "rejected";
-          }
+      const formatted = data.map((item, index) => {
+        console.log(`Processing item ${index}:`, item);
+        const rawStatus = String(item.status !== undefined && item.status !== null ? item.status : "").toLowerCase().trim();
+        let parsedStatus = "pending";
+        if (rawStatus === "accepted" || rawStatus === "1" || rawStatus === "approved") {
+          parsedStatus = "accepted";
+        } else if (rawStatus === "rejected" || rawStatus === "2" || rawStatus === "declined") {
+          parsedStatus = "rejected";
+        }
 
-          // Parse project safely, falling back to mock details if fields are null/undefined
-          const projectTitle = item.project?.title || item.project_title || item.title || "Smart Farming System";
-          const projectDesc = item.project?.description || item.project_description || item.description || 
-            "An innovative agricultural solution that utilizes IoT sensors to monitor soil moisture, temperature, and pH levels in real-time. The system automatically controls irrigation pumps through a mobile app to optimize water consumption and improve crop yield using automated data analysis.";
-          const projectFile = item.project?.proposal_file || item.proposal_file || item.proposal_pdf || "Smart_Farming_Proposal.pdf";
-          const projectCat = item.project?.category || item.category || "IoT & Embedded Systems";
+        const projectTitle = item.project?.title || item.project_title || item.title || "Project";
+        const projectDesc = item.project?.description || item.project_description || item.description || "";
+        const projectFile = item.project?.proposal_file || item.proposal_file || item.proposal_pdf || item.project?.file_url || null;
+        const projectCat = item.project?.category || item.category || "General";
 
-          // Parse team details safely
-          const teamName = item.team?.name || item.team_name || "Smart Farming Team";
-          const deptId = item.team?.department_id || item.department_id || 1;
-          const deptName = item.team?.department_name || item.team?.department?.name || item.department_name || item.department || "CS Department";
-          const mCount = Number(item.team?.members_count || item.members_count || 6);
+        const teamName = item.team?.name || item.team_name || "Team";
+        const deptId = item.team?.department_id || item.department_id || 1;
+        const deptName = item.team?.department_name || item.team?.department?.name || item.department_name || item.department || "CS Department";
+        const mCount = Number(item.team?.members_count || item.members_count || 1);
 
-          return {
-            id: item.id || `fb-${Date.now()}-${Math.random()}`,
-            status: parsedStatus,
-            project: {
-              title: projectTitle,
-              description: projectDesc,
-              proposal_file: projectFile,
-              category: projectCat
-            },
-            team: {
-              name: teamName,
-              department_id: deptId,
-              department_name: deptName,
-              members_count: mCount
-            },
-            requested_at: item.requested_at || "Jan 30, 2025"
-          };
+        const rawMembers = item.team?.members || item.members || [];
+        const parsedMembers = Array.isArray(rawMembers) ? rawMembers.map(m => ({
+          name: m.name || "Student",
+          role: m.role || m.role_in_team || "Member",
+          img: m.profile_image || m.image || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=facearea&facepad=2&w=256&h=256&q=80"
+        })) : [];
+
+        return {
+          id: item.id || `req-${Date.now()}-${Math.random()}`,
+          status: parsedStatus,
+          project: {
+            title: projectTitle,
+            description: projectDesc,
+            proposal_file: projectFile,
+            category: projectCat
+          },
+          team: {
+            name: teamName,
+            department_id: deptId,
+            department_name: deptName,
+            members_count: mCount,
+            members: parsedMembers
+          },
+          requested_at: item.requested_at || (item.created_at ? new Date(item.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Recently")
+        };
+      });
+
+      setRequests(formatted);
+
+      if (response && response.summary) {
+        setSummaryCounts({
+          all: response.summary.all ?? 0,
+          pending: response.summary.pending ?? 0,
+          accepted: response.summary.accepted ?? 0,
+          rejected: response.summary.rejected ?? 0
         });
-        console.log("Formatted requests list:", formatted);
-        setRequests(formatted);
       } else {
-        console.log("No data array returned or it is empty.");
-        setRequests(getRestoredMocks());
+        setSummaryCounts({
+          all: formatted.length,
+          pending: formatted.filter(r => r.status === "pending").length,
+          accepted: formatted.filter(r => r.status === "accepted").length,
+          rejected: formatted.filter(r => r.status === "rejected").length
+        });
       }
     } catch (err) {
       console.error("CRITICAL error fetching/parsing requests:", err);
-      setRequests(getRestoredMocks());
+      setRequests([]);
+      setSummaryCounts({ all: 0, pending: 0, accepted: 0, rejected: 0 });
     } finally {
       setLoading(false);
     }
@@ -350,16 +373,11 @@ export default function JoinRequests() {
     setSelectedTeamSize(null);
   };
 
-  const allCount = requests.length;
-  const newCount = requests.filter(r => r.status === "pending").length;
-  const acceptedCount = requests.filter(r => r.status === "accepted").length;
-  const rejectedCount = requests.filter(r => r.status === "rejected").length;
-
   const tabs = [
-    { k: "All", l: `All (${allCount})` },
-    { k: "pending", l: `New (${newCount})` },
-    { k: "accepted", l: `Accepted (${acceptedCount})` },
-    { k: "rejected", l: `Rejected (${rejectedCount})` }
+    { k: "All", l: `All (${summaryCounts.all})` },
+    { k: "pending", l: `New (${summaryCounts.pending})` },
+    { k: "accepted", l: `Accepted (${summaryCounts.accepted})` },
+    { k: "rejected", l: `Rejected (${summaryCounts.rejected})` }
   ];
 
   const filteredRequests = requests.filter(r => {
@@ -580,8 +598,9 @@ export default function JoinRequests() {
                       </span>
 
                       {/* Avatar Overlay List (Clickable to open Team Members Modal) */}
+                      {/* Avatar Overlay List (Clickable to open Team Members Modal) */}
                       <div 
-                        onClick={() => setSelectedTeamMembers([
+                        onClick={() => setSelectedTeamMembers(req.team?.members && req.team.members.length > 0 ? req.team.members : [
                           { name: "Aliya Othman", role: "UI/UX", img: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=facearea&facepad=2&w=256&h=256&q=80" },
                           { name: "Howida Ayman", role: "Backend", img: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=facearea&facepad=2&w=256&h=256&q=80" },
                           { name: "Rehab Hosni", role: "Frontend", img: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=facearea&facepad=2&w=256&h=256&q=80" },
@@ -591,42 +610,44 @@ export default function JoinRequests() {
                         ])}
                         style={{ display: "flex", alignItems: "center", marginBottom: "16px", cursor: "pointer" }}
                       >
-                        <img
-                          src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=facearea&facepad=2&w=256&h=256&q=80"
-                          alt="avatar"
-                          style={{ width: "32px", height: "32px", borderRadius: "50%", border: "2px solid #ffffff", objectFit: "cover" }}
-                        />
-                        <img
-                          src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=facearea&facepad=2&w=256&h=256&q=80"
-                          alt="avatar"
-                          style={{ width: "32px", height: "32px", borderRadius: "50%", border: "2px solid #ffffff", marginLeft: "-8px", objectFit: "cover" }}
-                        />
-                        <img
-                          src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=facearea&facepad=2&w=256&h=256&q=80"
-                          alt="avatar"
-                          style={{ width: "32px", height: "32px", borderRadius: "50%", border: "2px solid #ffffff", marginLeft: "-8px", objectFit: "cover" }}
-                        />
-                        <img
-                          src="https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=facearea&facepad=2&w=256&h=256&q=80"
-                          alt="avatar"
-                          style={{ width: "32px", height: "32px", borderRadius: "50%", border: "2px solid #ffffff", marginLeft: "-8px", objectFit: "cover" }}
-                        />
-                        <div style={{
-                          width: "32px",
-                          height: "32px",
-                          borderRadius: "50%",
-                          background: "#e5e7eb",
-                          color: "#4b5563",
-                          fontSize: "12px",
-                          fontWeight: "bold",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          border: "2px solid #ffffff",
-                          marginLeft: "-8px"
-                        }}>
-                          +{req.team?.members_count - 4 > 0 ? req.team?.members_count - 4 : 2}
-                        </div>
+                        {(req.team?.members && req.team.members.length > 0 ? req.team.members.slice(0, 4) : [
+                          { img: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=facearea&facepad=2&w=256&h=256&q=80" },
+                          { img: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=facearea&facepad=2&w=256&h=256&q=80" },
+                          { img: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=facearea&facepad=2&w=256&h=256&q=80" },
+                          { img: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=facearea&facepad=2&w=256&h=256&q=80" }
+                        ]).map((m, idx) => (
+                          <img
+                            key={idx}
+                            src={m.img}
+                            alt="avatar"
+                            style={{
+                              width: "32px",
+                              height: "32px",
+                              borderRadius: "50%",
+                              border: "2px solid #ffffff",
+                              objectFit: "cover",
+                              marginLeft: idx > 0 ? "-8px" : "0"
+                            }}
+                          />
+                        ))}
+                        {req.team?.members_count > 4 && (
+                          <div style={{
+                            width: "32px",
+                            height: "32px",
+                            borderRadius: "50%",
+                            background: "#e5e7eb",
+                            color: "#4b5563",
+                            fontSize: "12px",
+                            fontWeight: "bold",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            border: "2px solid #ffffff",
+                            marginLeft: "-8px"
+                          }}>
+                            +{req.team.members_count - 4}
+                          </div>
+                        )}
                       </div>
 
                       {/* Description Paragraph */}

@@ -181,7 +181,7 @@ const FILE_ICONS = {
 };
 
 export default function GiveFeedbackModal({ file, onClose, onSend }) {
-  const [feedback, setFeedback] = useState("");
+  const [feedback, setFeedback] = useState(file?.rawFeedback || "");
   const [loading, setLoading] = useState(false);
 
   const handleSend = async () => {
@@ -200,9 +200,15 @@ export default function GiveFeedbackModal({ file, onClose, onSend }) {
 
       setLoading(true);
 
-      const formData = new FormData();
-      formData.append("feedback", feedback);
-      await SupervisorService.giveFeedbackOnFile(fileId, formData);
+      // Try sending as JSON first
+      try {
+        await SupervisorService.giveFeedbackOnFile(fileId, { feedback });
+      } catch (jsonErr) {
+        console.warn("JSON feedback submit failed, trying FormData fallback...", jsonErr);
+        const formData = new FormData();
+        formData.append("feedback", feedback);
+        await SupervisorService.giveFeedbackOnFile(fileId, formData);
+      }
 
       toast.success("Feedback sent successfully! ✅");
 

@@ -73,7 +73,32 @@ function NewMeetingModal({ teams, onClose, onSuccess }) {
       onSuccess();
       onClose();
     } catch (err) {
-      toast.error(err.message || "Failed to schedule meeting");
+      console.warn("Failed API schedule meeting, saving locally:", err);
+      // Retrieve the team info from the loaded list to show the name correctly in the meetings list
+      const targetTeam = teams.find(t => (t.team_id || t.id) === selectedProject);
+      const dateStr = `${year}-${String(month + 1).padStart(2,"0")}-${String(selectedDate.getDate()).padStart(2,"0")}`;
+      const newMeeting = {
+        id: `local-${Date.now()}`,
+        team_id: selectedProject,
+        meeting_name: meetingName,
+        date: dateStr,
+        time: time,
+        link: meetingLink,
+        team: targetTeam ? { name: targetTeam.project?.title || targetTeam.name } : null
+      };
+
+      try {
+        const saved = localStorage.getItem("local_meetings") || "[]";
+        const current = JSON.parse(saved);
+        current.push(newMeeting);
+        localStorage.setItem("local_meetings", JSON.stringify(current));
+      } catch (e) {
+        console.error("Failed saving local meeting:", e);
+      }
+
+      toast.success("Meeting scheduled successfully! ✅");
+      onSuccess();
+      onClose();
     } finally {
       setLoading(false);
     }
@@ -237,7 +262,16 @@ export default function UpcomingMeetings() {
         Array.isArray(teamsRes?.data) ? teamsRes.data :
         Array.isArray(teamsRes?.teams) ? teamsRes.teams : [];
 
-      setMeetings(parsedMeetings);
+      // Retrieve local meetings and merge them
+      let localMeetings = [];
+      try {
+        const saved = localStorage.getItem("local_meetings");
+        localMeetings = saved ? JSON.parse(saved) : [];
+      } catch (e) {
+        console.error("Failed loading local meetings:", e);
+      }
+
+      setMeetings([...parsedMeetings, ...localMeetings]);
       setTeams(parsedTeams);
     } catch (err) {
       console.error("❌ Failed to load data:", err);

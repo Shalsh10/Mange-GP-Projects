@@ -15,6 +15,20 @@ import { BsCircle } from "react-icons/bs";
 
 import Project from "../Services/Project.model";
 
+const getRequirementText = (item) => {
+  if (item === undefined || item === null) return "";
+  if (typeof item !== "object") return String(item);
+
+  return String(
+    item.requirement ??
+      item.title ??
+      item.name ??
+      item.description ??
+      item.text ??
+      ""
+  );
+};
+
 function MilestoneDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -23,25 +37,25 @@ function MilestoneDetails() {
   const [milestone, setMilestone] = useState(null);
 
   useEffect(() => {
+    const fetchMilestone = async () => {
+      try {
+        setLoading(true);
+
+        const response =
+          await Project.getMyMilestones(id);
+
+        setMilestone(
+          response?.data || response
+        );
+      } catch (error) {
+        console.log(error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
     fetchMilestone();
   }, [id]);
-
-  const fetchMilestone = async () => {
-    try {
-      setLoading(true);
-
-      const response =
-        await Project.getMyMilestones(id);
-
-      setMilestone(
-        response?.data || response
-      );
-    } catch (error) {
-      console.log(error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   if (loading) {
     return (
@@ -234,7 +248,7 @@ function MilestoneDetails() {
           <BsCircle />
 
           <span>
-            {item}
+            {getRequirementText(item)}
           </span>
 
         </div>

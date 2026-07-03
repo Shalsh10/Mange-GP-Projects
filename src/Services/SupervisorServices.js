@@ -93,10 +93,15 @@ export const SupervisorService = {
   deleteMeeting: (meetingId) => submitRequestAsync(`supervisor/meetings/${meetingId}/delete`, 'DELETE'),
 
   // --- Defense Committees ---
-  getMyDefenseCommittees: () => submitRequestAsync('supervisor/defense-committees/my', 'GET'),
-  showDefenseCommittee: (id) => submitRequestAsync(`supervisor/defense-committees/${id}`, 'GET'),
-  addDefenseGrade: (data) => submitRequestAsync('supervisor/defense-committees/grade', 'POST', data),
-  exportMyDefenseCommittees: () => submitRequestAsync('supervisor/defense-committees/export', 'GET'),
+  getMyDefenseCommittees: () => submitRequestAsync('supervisor/my-defense-committees', 'GET'),
+  showDefenseCommittee: (id) => submitRequestAsync(`supervisor/my-defense-committees/${id}`, 'GET'),
+  addDefenseGrade: (committeeId, grade) => {
+    const formData = new FormData();
+    formData.append('grade', grade);
+    return submitRequestAsync(`doctor/defense-committees/${committeeId}/grade`, 'POST', formData);
+  },
+  exportMyDefenseCommittees: () => submitRequestAsync('supervisor/my-defense-committees/export', 'GET'),
+
 
   // --- Dashboard ---
   getDashboard: () => submitRequestAsync('supervisor/dashboard', 'GET'),

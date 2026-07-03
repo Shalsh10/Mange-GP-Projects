@@ -10,10 +10,10 @@ const token = {
   }
 };
 
-const isDevelopment = import.meta.env.DEV;
-
 function getBaseUrl() {
-  return isDevelopment ? "/api" : settings.backendServer;
+  const server = settings.backendServer || "";
+  const trimmed = server.endsWith("/") ? server : `${server}/`;
+  return `${trimmed}api`;
 }
 
 function extractResponseData(res) {
@@ -50,6 +50,12 @@ export async function submitRequestAsync(endpoint, method = "GET", body = null, 
     } else { res = {}; }
 
     if (!response.ok) {
+      if (response.status === 401) {
+        token.clearUserTokenData();
+        if (typeof window !== "undefined") {
+          window.location.href = "/login";
+        }
+      }
       const errorMsg = res?.message || `Error ${response.status}: Request failed`;
       throw new Error(errorMsg);
     }
@@ -60,6 +66,9 @@ export async function submitRequestAsync(endpoint, method = "GET", body = null, 
     if (error.message.includes("401")) {
       token.clearUserTokenData();
       errorMsg = "Session expired, please login again.";
+      if (typeof window !== "undefined") {
+        window.location.href = "/login";
+      }
     }
     throw new Error(errorMsg);
   }

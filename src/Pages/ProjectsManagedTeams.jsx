@@ -76,9 +76,26 @@ const pmtCss = `
 }
 
 .pmt-header-info {
-  text-align: right;
+  min-width: 360px;
+  text-align: left;
   font-size: 14px;
   line-height: 1.4;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pmt-current-milestone-row {
+  display: grid;
+  grid-template-columns: 86px minmax(0, 1fr);
+  column-gap: 8px;
+  row-gap: 2px;
+  align-items: start;
+}
+
+.pmt-capstone-label {
+  color: #0052CC;
+  font-weight: 800;
 }
 
 .pmt-milestone-label {
@@ -94,11 +111,12 @@ const pmtCss = `
 .pmt-deadline-row {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: flex-start;
   gap: 6px;
-  margin-top: 6px;
+  margin-top: 3px;
   color: #EF534A;
   font-weight: 700;
+  grid-column: 2;
 }
 
 /* Stats Cards */
@@ -788,95 +806,517 @@ const defaultProjects = [
   },
 ];
 
-const calendarWeeks = [
-  ["29", "30", "31", "1", "2", "3", "4"],
-  ["5", "6", "7", "8", "9", "10", "11"],
-  ["12", "13", "14", "15", "16", "17", "18"],
-  ["19", "20", "21", "22", "23", "24", "25"],
-  ["26", "27", "28", "29", "30", "31", "1"],
+const DEFAULT_CAPSTONE_OPTIONS = [
+  { id: "1", name: "Capstone 1" },
+  { id: "2", name: "Capstone 2" },
 ];
+
+const firstFilled = (...values) =>
+  values.find((value) => value !== undefined && value !== null && value !== "") ?? "";
+
+const formatCapstoneLabel = (course, index = 0) => {
+  const raw = String(firstFilled(course?.name, course?.title, course?.label, course, ""));
+  const match = raw.match(/[12]/);
+
+  if (/capstone/i.test(raw) && match) return `Capstone ${match[0]}`;
+  if (match) return `Capstone ${match[0]}`;
+  return raw || `Capstone ${index + 1}`;
+};
+
+const getCapstoneOptions = (projectCourses = []) => {
+  const courses = Array.isArray(projectCourses) && projectCourses.length > 0
+    ? projectCourses
+    : DEFAULT_CAPSTONE_OPTIONS;
+
+  return courses.map((course, index) => ({
+    id: firstFilled(course.id, course.value, course.project_course_id, `${index + 1}`),
+    name: formatCapstoneLabel(course, index),
+    raw: course,
+  }));
+};
+
+const normalizeMilestoneInfo = (source, fallbackCourse, index = 0) => {
+  const milestone = firstFilled(source?.current_milestone, source?.milestone, source, {});
+  const course = firstFilled(source?.project_course, source?.course, fallbackCourse, {});
+
+  return {
+    key: firstFilled(source?.key, source?.course_id, source?.project_course_id, course?.id, `capstone-${index + 1}`),
+    label: formatCapstoneLabel(course, index),
+    title: firstFilled(milestone?.title, milestone?.name, source?.title, source?.name, "Not assigned yet"),
+    deadline: firstFilled(milestone?.deadline, milestone?.due_date, source?.deadline, source?.due_date, "TBD"),
+  };
+};
+
+const extractCurrentMilestones = (dataObj, projectCourses = []) => {
+  const courseOptions = getCapstoneOptions(projectCourses);
+  const directSources = [
+    dataObj?.current_milestones,
+    dataObj?.current_milestones_by_course,
+    dataObj?.current_milestones_by_project_course,
+    dataObj?.capstone_current_milestones,
+  ].filter(Boolean);
+
+  let rows = [];
+
+  directSources.forEach((source) => {
+    if (Array.isArray(source)) {
+      rows.push(...source.map((item, index) => normalizeMilestoneInfo(item, courseOptions[index]?.raw, index)));
+    } else if (typeof source === "object") {
+      rows.push(
+        ...Object.entries(source).map(([key, value], index) =>
+          normalizeMilestoneInfo({ key, ...value }, courseOptions[index]?.raw, index)
+        )
+      );
+    }
+  });
+
+  if (rows.length === 0) {
+    const withEmbeddedMilestones = courseOptions
+      .filter((course) => course.raw?.current_milestone || course.raw?.milestone)
+      .map((course, index) => normalizeMilestoneInfo(course.raw, course.raw, index));
+
+    rows = withEmbeddedMilestones;
+  }
+
+  if (rows.length === 0 && dataObj?.current_milestone) {
+    rows = [normalizeMilestoneInfo(dataObj, courseOptions[0]?.raw, 0)];
+  }
+
+  const normalized = rows.slice(0, 2);
+  while (normalized.length < 2) {
+    const option = courseOptions[normalized.length] || DEFAULT_CAPSTONE_OPTIONS[normalized.length];
+    normalized.push({
+      key: firstFilled(option?.id, `capstone-${normalized.length + 1}`),
+      label: formatCapstoneLabel(option?.raw || option, normalized.length),
+      title: "Not assigned yet",
+      deadline: "TBD",
+    });
+  }
+
+  return normalized;
+};
+
+const getImageUrl = (path) => {
+  if (!path) return blockchainImg;
+  if (path.startsWith("http")) return path;
+  return `https://mango-attendant-handyman.ngrok-free.dev${path.startsWith("/") ? "" : "/"}${path}`;
+};
+
 
 export default function ProjectsManagedTeams() {
   const navigate = useNavigate();
-  const [projects, setProjects] = useState(defaultProjects);
+  
+  const [allTeams, setAllTeams] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [deptFilter, setDeptFilter] = useState("All");
   const [statusFilter, setStatusFilter] = useState("All");
-  const [gradeFilter, setGradeFilter] = useState("All");
+  const [courseFilter, setCourseFilter] = useState("All");
   
   const [showAnnouncement, setShowAnnouncement] = useState(false);
   const [showNewMeeting, setShowNewMeeting] = useState(false);
   const [meetingTeam, setMeetingTeam] = useState(null);
 
+  const [meetings, setMeetings] = useState([]);
+  const [meetingsCount, setMeetingsCount] = useState(0);
+
+  // Dynamic Header states from API
+  const [academicYearCode, setAcademicYearCode] = useState("2024-2025");
+  const [currentMilestonesInfo, setCurrentMilestonesInfo] = useState([
+    { key: "capstone-1", label: "Capstone 1", title: "Mid Evaluation", deadline: "2026-07-25" },
+    { key: "capstone-2", label: "Capstone 2", title: "Not assigned yet", deadline: "TBD" },
+  ]);
+
+  // Dynamic Stats from API
+  const [statsData, setStatsData] = useState({
+    total_teams: 8,
+    on_track: 3,
+    delayed: 5,
+    meetings_count: 1
+  });
+
+  // Dynamic Sidebar states from API
+  const [pendingFeedbackState, setPendingFeedbackState] = useState([]);
+
+  // Dynamic filter options from API
+  const [filterOptions, setFilterOptions] = useState({
+    departments: [],
+    statuses: [],
+    project_courses: []
+  });
+
+  // Calendar month & year state
+  const [calMonth, setCalMonth] = useState(new Date().getMonth());
+  const [calYear, setCalYear] = useState(new Date().getFullYear());
+
   const fetchTeams = async () => {
     try {
       const params = {};
       if (searchTerm) params.search = searchTerm;
-      if (deptFilter !== "All") {
-        params.department_id = deptFilter === "CS" ? 1 : 2;
-      }
-      if (statusFilter !== "All") {
-        params.status = statusFilter.toLowerCase().replace(/\s+/g, "_");
-      }
-      
-      const res = await SupervisorService.getAllMilestoneTeams(params);
-      console.log("Projects & Managed Teams loaded:", res);
-      
-      const fetched = res?.data?.projects || res?.projects || res?.data || res;
-      if (Array.isArray(fetched) && fetched.length > 0) {
-        const adapted = fetched.map(item => {
-          const teamId = item.team_id || item.id || "A";
-          let localImg = blockchainImg;
-          if (teamId === "B") localImg = aiHealthImg;
-          else if (teamId === "C") localImg = vrImg;
-          else if (teamId === "D") localImg = iotImg;
+      if (deptFilter !== "All") params.department_id = deptFilter;
+      if (statusFilter !== "All") params.status = statusFilter;
+      if (courseFilter !== "All") params.project_course_id = courseFilter;
 
-          return {
-            team_id: teamId,
-            title: item.project?.title || item.title || "Project Title",
-            description: item.project?.description || item.description || "Description",
-            image: localImg,
-            badge: item.status || "On Track",
-            badgeColor: item.status === "Delayed" ? "#EF4444" : (item.status === "Pending" ? "#F97316" : "#22C55E"),
-            tags: item.project?.tags || item.tags || ["CS", "Blockchain", "Web"],
-            ta: item.ta?.name || item.ta || "Teacher Assistant",
-            status: item.status || "On Track",
-            statusColor: item.status === "Delayed" ? "#EF4444" : (item.status === "Pending" ? "#F97316" : "#22C55E"),
-            statusBg: item.status === "Delayed" ? "#FEE2E2" : (item.status === "Pending" ? "#FFEDD5" : "#DCFCE7"),
-            submissionType: item.last_submission?.type || "UI/UX Prototypes",
-            submissionDate: item.last_submission?.date || "Jan 15",
-            avatars: item.students?.map(s => s.avatar) || [
+      const [committeeRes, supervisedRes] = await Promise.allSettled([
+        SupervisorService.getAllMilestoneTeams(params),
+        SupervisorService.getSupervisedTeams(params)
+      ]);
+
+      let committeeDataObj = committeeRes.status === "fulfilled" ? committeeRes.value : null;
+      let supervisedDataObj = supervisedRes.status === "fulfilled" ? supervisedRes.value : null;
+
+      // Extract metadata & header info from committeeDataObj if available
+      if (committeeDataObj) {
+        const apiFilterOptions = committeeDataObj.filters?.options || {};
+        const projectCourseOptions = apiFilterOptions.project_courses || committeeDataObj.project_courses || [];
+
+        if (committeeDataObj.academic_year?.code) {
+          setAcademicYearCode(committeeDataObj.academic_year.code);
+        }
+
+        setCurrentMilestonesInfo(extractCurrentMilestones(committeeDataObj, projectCourseOptions));
+
+        if (committeeDataObj.statistics) {
+          setStatsData({
+            total_teams: committeeDataObj.statistics.total_teams ?? 0,
+            on_track: committeeDataObj.statistics.on_track ?? 0,
+            delayed: committeeDataObj.statistics.delayed ?? 0,
+            meetings_count: committeeDataObj.statistics.meetings_count ?? 0
+          });
+          setMeetingsCount(committeeDataObj.statistics.meetings_count ?? 0);
+        }
+        if (committeeDataObj.filters?.options) {
+          setFilterOptions(apiFilterOptions);
+        }
+      }
+
+      const committeeFetched = committeeDataObj?.data || committeeDataObj?.projects || committeeDataObj || [];
+      const supervisedFetched = supervisedDataObj?.data || supervisedDataObj?.projects || supervisedDataObj || [];
+
+      const mapOverallStatus = (status) => {
+        if (!status) return "On Track";
+        const lower = status.toLowerCase();
+        if (lower === "on_track") return "On Track";
+        if (lower === "delayed") return "Delayed";
+        if (lower === "pending_submission") return "Pending Submission";
+        return status;
+      };
+
+      const mapCardStatus = (status) => {
+        if (!status) return "Nothing";
+        const lower = status.toLowerCase();
+        if (lower === "pending_grades") return "Pending Grades";
+        if (lower === "no_submission") return "Nothing";
+        if (lower === "completed") return "Completed";
+        if (lower === "pending_feedback") return "Pending Feedback";
+        return status;
+      };
+
+      const adaptTeamItem = (item, type) => {
+        const teamId = item.team_id || item.id || "A";
+        const projectImage = getImageUrl(item.project?.image_url);
+
+        // Parse milestones
+        const adaptedMilestones = item.milestones?.map(m => ({
+          milestone: m.title || m.milestone || m.name,
+          status: m.status || "Completed",
+          deadline: m.deadline || m.due_date || "TBD",
+          grade: m.grade ? `${m.grade}/20` : "Add Grade",
+          hasActions: m.status !== "Locked"
+        })) || [];
+
+        // Collect files
+        let collectedFiles = [];
+        if (item.last_submission?.file) {
+          collectedFiles.push({
+            id: item.last_submission.submission_id || item.last_submission.file.id,
+            name: item.last_submission.file.file_name || "File.pdf",
+            milestone: item.current_milestone?.title || "Last Submission",
+            date: item.last_submission.submitted_at_human || "Recently",
+            feedback: item.card_status === "pending_feedback" ? "Give Feedback" : "Given",
+            icon: item.last_submission.file.file_name?.endsWith(".mp4") ? "mp4" : "pdf"
+          });
+        }
+
+        // Tag values
+        const tags = [];
+        if (item.department?.name) tags.push(item.department.name);
+        if (item.project?.category) tags.push(item.project.category);
+        if (tags.length === 0) tags.push("IT", "Web");
+
+        // Real members' avatars with fallbacks
+        const avatars = Array.isArray(item.members) && item.members.length > 0
+          ? item.members.map(m => getImageUrl(m.profile_image || m.image || ""))
+          : [
               "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&q=80",
               "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=100&q=80",
               "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=100&q=80",
               "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=100&q=80",
-            ]
-          };
-        });
-        setProjects(adapted);
+            ];
+
+        return {
+          team_id: teamId,
+          type: type,
+          title: item.project?.title || item.title || "Project Title",
+          description: item.project?.description || item.description || "Description",
+          image: projectImage,
+          badge: mapCardStatus(item.card_status),
+          badgeColor: item.overall_status === "delayed" ? "#EF4444" : (item.overall_status === "pending_submission" ? "#F97316" : "#22C55E"),
+          tags: tags,
+          ta: item.supervisors?.ta?.name || item.supervisors?.ta_name || item.ta || "Teacher Assistant",
+          status: mapOverallStatus(item.overall_status),
+          statusColor: item.overall_status === "delayed" ? "#EF4444" : (item.overall_status === "pending_submission" ? "#F97316" : "#22C55E"),
+          statusBg: item.overall_status === "delayed" ? "#FEE2E2" : (item.overall_status === "pending_submission" ? "#FFEDD5" : "#DCFCE7"),
+          submissionType: item.last_submission?.file?.file_name || "No submission yet",
+          submissionDate: item.last_submission?.submitted_at_human || "",
+          avatars: avatars,
+          files: collectedFiles,
+          milestones: adaptedMilestones
+        };
+      };
+
+      const adaptedCommittee = Array.isArray(committeeFetched) ? committeeFetched.map(t => adaptTeamItem(t, "committee")) : [];
+      const adaptedSupervised = Array.isArray(supervisedFetched) ? supervisedFetched.map(t => adaptTeamItem(t, "supervised")) : [];
+
+      const combined = [...adaptedCommittee, ...adaptedSupervised];
+      const uniqueTeams = [];
+      const seenIds = new Set();
+      for (const t of combined) {
+        if (!seenIds.has(t.team_id)) {
+          seenIds.add(t.team_id);
+          uniqueTeams.push(t);
+        }
       }
+
+      setAllTeams(uniqueTeams);
+
+      // Map sidebar items directly if provided by API
+      if (committeeDataObj) {
+        if (Array.isArray(committeeDataObj.pending_feedback)) {
+          const adaptedFeedbacks = committeeDataObj.pending_feedback.map(f => ({
+            teamId: f.team_id,
+            title: f.project_title,
+            ta: "Teacher Assistant",
+            file: {
+              name: "Submitted File",
+              date: f.submitted_at ? new Date(f.submitted_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "3 weeks ago",
+              feedback: "Give Feedback"
+            }
+          }));
+          setPendingFeedbackState(adaptedFeedbacks);
+        }
+
+        if (Array.isArray(committeeDataObj.upcoming_meetings)) {
+          const adaptedMeetings = committeeDataObj.upcoming_meetings.map(m => ({
+            id: m.id,
+            team_id: m.team_id,
+            meeting_name: m.title || "Meeting",
+            date: m.date || m.scheduled_at?.split(" ")[0],
+            time: m.time,
+            link: m.link || "",
+            team: { name: m.project_title }
+          }));
+          setMeetings(adaptedMeetings);
+        }
+      }
+
     } catch (e) {
-      console.warn("Failed fetching teams from API, using local filtering. Error:", e);
-      let localFiltered = defaultProjects;
-      if (searchTerm) {
-        localFiltered = localFiltered.filter(p => 
-          p.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
-          p.ta.toLowerCase().includes(searchTerm.toLowerCase())
-        );
-      }
-      if (deptFilter !== "All") {
-        localFiltered = localFiltered.filter(p => p.tags.includes(deptFilter));
-      }
-      if (statusFilter !== "All") {
-        localFiltered = localFiltered.filter(p => p.status === statusFilter);
-      }
-      setProjects(localFiltered);
+      console.warn("Failed fetching teams from API:", e);
+    }
+  };
+
+  const fetchMeetings = async () => {
+    try {
+      const res = await SupervisorService.getComingMeetings();
+      const parsed = Array.isArray(res) ? res : (Array.isArray(res?.data) ? res.data : (Array.isArray(res?.meetings) ? res.meetings : []));
+      
+      const saved = localStorage.getItem("local_meetings") || "[]";
+      const local = JSON.parse(saved);
+      const combined = [...parsed, ...local];
+      
+      setMeetings(combined);
+    } catch (e) {
+      console.warn("Failed loading meetings:", e);
     }
   };
 
   useEffect(() => {
     fetchTeams();
-  }, [searchTerm, deptFilter, statusFilter]);
+  }, [searchTerm, deptFilter, statusFilter, courseFilter]);
+
+  useEffect(() => {
+    fetchMeetings();
+  }, []);
+
+  const filteredProjects = allTeams.filter(project => {
+    // 1. Search term filter
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      const titleMatch = (project.title || "").toLowerCase().includes(term);
+      const descMatch = (project.description || "").toLowerCase().includes(term);
+      const taMatch = (project.ta || "").toLowerCase().includes(term);
+      const teamIdMatch = String(project.team_id).toLowerCase().includes(term);
+      if (!titleMatch && !descMatch && !taMatch && !teamIdMatch) return false;
+    }
+
+    // 2. Department filter
+    if (deptFilter !== "All") {
+      const deptMatch = project.tags?.some(tag => tag.toLowerCase() === deptFilter.toLowerCase());
+      if (!deptMatch) return false;
+    }
+
+    // 3. Status filter
+    if (statusFilter !== "All") {
+      const statusMatch = String(project.status).toLowerCase().replace(/\s+/g, "_") === statusFilter.toLowerCase().replace(/\s+/g, "_");
+      if (!statusMatch) return false;
+    }
+
+    return true;
+  });
+
+  const totalTeamsCount = allTeams.length;
+  const onTrackCount = allTeams.filter(p => p.status === "On Track").length;
+  const delayedCount = allTeams.filter(p => p.status === "Delayed").length;
+
+  const getDaysInMonth = (year, month) => {
+    const firstDay = new Date(year, month, 1).getDay(); // Sun=0, Mon=1...
+    const numDays = new Date(year, month + 1, 0).getDate();
+    const startOffset = firstDay === 0 ? 6 : firstDay - 1;
+    
+    const cells = [];
+    const prevNumDays = new Date(year, month, 0).getDate();
+    for (let i = startOffset - 1; i >= 0; i--) {
+      cells.push({ day: prevNumDays - i, isMuted: true, monthOffset: -1 });
+    }
+    
+    for (let d = 1; d <= numDays; d++) {
+      cells.push({ day: d, isMuted: false, monthOffset: 0 });
+    }
+    
+    const totalCells = cells.length <= 35 ? 35 : 42;
+    const remaining = totalCells - cells.length;
+    for (let d = 1; d <= remaining; d++) {
+      cells.push({ day: d, isMuted: true, monthOffset: 1 });
+    }
+    
+    return cells;
+  };
+
+  const calendarCells = getDaysInMonth(calYear, calMonth);
+  const MONTHS_LIST = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+  ];
+
+  const handlePrevMonth = () => {
+    if (calMonth === 0) {
+      setCalMonth(11);
+      setCalYear(prev => prev - 1);
+    } else {
+      setCalMonth(prev => prev - 1);
+    }
+  };
+
+  const handleNextMonth = () => {
+    if (calMonth === 11) {
+      setCalMonth(0);
+      setCalYear(prev => prev + 1);
+    } else {
+      setCalMonth(prev => prev + 1);
+    }
+  };
+
+  const checkHasMeeting = (dayObj) => {
+    if (dayObj.isMuted) return false;
+    const dateStr = `${calYear}-${String(calMonth + 1).padStart(2, "0")}-${String(dayObj.day).padStart(2, "0")}`;
+    return meetings.some(meet => {
+      if (!meet.date) return false;
+      return meet.date.split("T")[0] === dateStr;
+    });
+  };
+
+  // 1. Pending Feedback List from real files & API state
+  const combinedPendingFeedback = [];
+  const seenFeedbackIds = new Set();
+  
+  // Add from API state first
+  if (Array.isArray(pendingFeedbackState)) {
+    pendingFeedbackState.forEach(item => {
+      const key = `${item.teamId}-${item.file?.name}`;
+      if (item.teamId && !seenFeedbackIds.has(key)) {
+        seenFeedbackIds.add(key);
+        combinedPendingFeedback.push(item);
+      }
+    });
+  }
+
+  // Add from file list
+  allTeams.forEach(t => {
+    if (Array.isArray(t.files)) {
+      t.files.forEach(f => {
+        if (f.feedback === "Give Feedback") {
+          const key = `${t.team_id}-${f.name}`;
+          if (!seenFeedbackIds.has(key)) {
+            seenFeedbackIds.add(key);
+            combinedPendingFeedback.push({
+              teamId: t.team_id,
+              title: t.title,
+              ta: t.ta,
+              file: f,
+              type: t.type
+            });
+          }
+        }
+      });
+    }
+  });
+
+  // 2. Recently Graded List from real milestones
+  const recentlyGradedList = [];
+  allTeams.forEach(t => {
+    if (Array.isArray(t.milestones)) {
+      t.milestones.forEach(m => {
+        if (m.grade && m.grade !== "Add Grade" && m.grade !== "---") {
+          const numGrade = parseFloat(m.grade);
+          const percent = isNaN(numGrade) ? 90 : Math.round((numGrade / 20) * 100);
+          recentlyGradedList.push({
+            teamId: t.team_id,
+            title: t.title,
+            milestone: m.milestone,
+            grade: m.grade,
+            percent: percent,
+            date: m.deadline || "Jan 25"
+          });
+        }
+      });
+    }
+  });
+
+  // 3. Recent Activity List from submissions and grading
+  const recentActivityList = [];
+  allTeams.forEach(t => {
+    if (Array.isArray(t.files)) {
+      t.files.forEach(f => {
+        recentActivityList.push({
+          type: "submission",
+          teamId: t.team_id,
+          action: `submitted ${f.milestone}`,
+          time: f.date || "1 day ago"
+        });
+      });
+    }
+    if (Array.isArray(t.milestones)) {
+      t.milestones.forEach(m => {
+        if (m.grade && m.grade !== "Add Grade" && m.grade !== "---") {
+          recentActivityList.push({
+            type: "grade",
+            teamId: t.team_id,
+            action: `graded ${m.milestone} (${m.grade})`,
+            time: "recently"
+          });
+        }
+      });
+    }
+  });
 
   return (
     <>
@@ -888,20 +1328,26 @@ export default function ProjectsManagedTeams() {
           <header className="pmt-header">
             <div className="pmt-header-title">
               <h1>Projects & Managed Teams</h1>
-              <p>Academic Year 2025-2026</p>
+              <p>Academic Year {academicYearCode}</p>
             </div>
 
             <div className="pmt-header-info">
-              <div>
-                <span className="pmt-milestone-label">Current Milestone: </span>
-                <span className="pmt-milestone-value">User Interface Design & Prototyping</span>
-              </div>
-              <div className="pmt-deadline-row">
-                <Calendar size={15} strokeWidth={2.4} />
-                <span>Deadline: Jan 30, 2026</span>
-              </div>
+              {currentMilestonesInfo.map((milestone) => (
+                <div className="pmt-current-milestone-row" key={milestone.key}>
+                  <span className="pmt-capstone-label">{milestone.label}:</span>
+                  <div>
+                    <span className="pmt-milestone-label">Current Milestone: </span>
+                    <span className="pmt-milestone-value">{milestone.title}</span>
+                  </div>
+                  <div className="pmt-deadline-row">
+                    <Calendar size={15} strokeWidth={2.4} />
+                    <span>Deadline: {milestone.deadline}</span>
+                  </div>
+                </div>
+              ))}
             </div>
           </header>
+
 
           {/* ================= STATS ================= */}
           <section className="pmt-stats-grid">
@@ -915,7 +1361,7 @@ export default function ProjectsManagedTeams() {
                 </div>
                 <span className="pmt-stat-arrow">&gt;</span>
               </div>
-              <div className="pmt-stat-value" style={{ color: "#0052CC" }}>5</div>
+              <div className="pmt-stat-value" style={{ color: "#0052CC" }}>{statsData.total_teams}</div>
             </div>
 
             <div className="pmt-stat-card">
@@ -928,7 +1374,7 @@ export default function ProjectsManagedTeams() {
                 </div>
                 <span className="pmt-stat-arrow">&gt;</span>
               </div>
-              <div className="pmt-stat-value" style={{ color: "#22C55E" }}>3</div>
+              <div className="pmt-stat-value" style={{ color: "#22C55E" }}>{statsData.on_track}</div>
             </div>
 
             <div className="pmt-stat-card">
@@ -941,7 +1387,7 @@ export default function ProjectsManagedTeams() {
                 </div>
                 <span className="pmt-stat-arrow">&gt;</span>
               </div>
-              <div className="pmt-stat-value" style={{ color: "#EF4444" }}>1</div>
+              <div className="pmt-stat-value" style={{ color: "#EF4444" }}>{statsData.delayed}</div>
             </div>
 
             <div className="pmt-stat-card">
@@ -954,7 +1400,7 @@ export default function ProjectsManagedTeams() {
                 </div>
                 <span className="pmt-stat-arrow">&gt;</span>
               </div>
-              <div className="pmt-stat-value" style={{ color: "#4A5568" }}>2</div>
+              <div className="pmt-stat-value" style={{ color: "#4A5568" }}>{statsData.meetings_count}</div>
             </div>
           </section>
 
@@ -979,8 +1425,9 @@ export default function ProjectsManagedTeams() {
                 onChange={(e) => setDeptFilter(e.target.value)}
               >
                 <option value="All">All</option>
-                <option value="CS">CS</option>
-                <option value="IS">IS</option>
+                {filterOptions.departments?.map(d => (
+                  <option key={d.id} value={d.id}>{d.name}</option>
+                ))}
               </select>
             </div>
 
@@ -992,134 +1439,159 @@ export default function ProjectsManagedTeams() {
                 onChange={(e) => setStatusFilter(e.target.value)}
               >
                 <option value="All">All</option>
-                <option value="On Track">On Track</option>
-                <option value="Delayed">Delayed</option>
-                <option value="Pending Submission">Pending Submission</option>
+                {filterOptions.statuses?.map(s => (
+                  <option key={s.value} value={s.value}>{s.label}</option>
+                ))}
               </select>
             </div>
 
             <div className="pmt-filter-group">
-              <span>Grade:</span>
+              <span>Capstone:</span>
               <select
                 className="pmt-filter-select"
-                value={gradeFilter}
-                onChange={(e) => setGradeFilter(e.target.value)}
+                value={courseFilter}
+                onChange={(e) => setCourseFilter(e.target.value)}
               >
                 <option value="All">All</option>
-                <option value="High">High</option>
-                <option value="Low">Low</option>
+                {filterOptions.project_courses?.map(pc => (
+                  <option key={pc.id} value={pc.id}>{pc.name}</option>
+                ))}
               </select>
             </div>
           </section>
 
           {/* ================= PROJECT LIST ================= */}
           <section>
-            {projects.map((project) => (
-              <div key={project.team_id} className="pmt-card">
-                {/* Image and side-badge */}
-                <div className="pmt-card-left">
-                  <img src={project.image} alt={project.title} className="pmt-card-image" />
-                  <div
-                    className="pmt-card-badge"
-                    style={{ background: project.badgeColor }}
-                  >
-                    {project.badge === "Completed" && (
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 2 }}><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="2.5"/><polyline points="9 11 12 14 16 9"/></svg>
-                    )}
-                    {project.badge === "Pending Feedback" && (
-                      <MessageSquare size={13} strokeWidth={2.5} style={{ marginRight: 2 }} />
-                    )}
-                    {project.badge === "Nothing" && (
-                      <X size={13} strokeWidth={3} style={{ marginRight: 2 }} />
-                    )}
-                    {project.badge === "Pending Grades" && (
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 2 }}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-                    )}
-                    <span>{project.badge}</span>
-                  </div>
-                </div>
-
-                {/* Details middle */}
-                <div className="pmt-card-middle">
-                  <h2 className="pmt-card-title">{project.title}</h2>
-                  <p className="pmt-card-desc">"{project.description}"</p>
-                  <div className="pmt-card-tags">
-                    <span className="pmt-team-tag-label">Team {project.team_id}:</span>
-                    {project.tags.map((tag) => (
-                      <span key={tag} className="pmt-chip">{tag}</span>
-                    ))}
-                  </div>
-                  <p className="pmt-ta-info">
-                    Teacher Assistant: <strong>{project.ta}</strong>
-                  </p>
-                </div>
-
-                {/* Middle Right Status */}
-                <div className="pmt-card-right-mid">
-                  {/* Avatars */}
-                  <div className="pmt-avatars">
-                    {project.avatars.map((url, idx) => (
-                      <img key={idx} src={url} alt="student" className="pmt-avatar" />
-                    ))}
-                    <div className="pmt-avatar-more">+2</div>
-                  </div>
-
-                  {/* Status Pill */}
-                  <div
-                    className="pmt-status-pill"
-                    style={{ background: project.statusBg, color: project.statusColor }}
-                  >
-                    {project.status === "On Track" && <Check size={11} strokeWidth={3} />}
-                    {project.status === "Delayed" && <AlertTriangle size={11} strokeWidth={3} />}
-                    {project.status === "Pending Submission" && <Clock size={11} strokeWidth={3} />}
-                    <span>{project.status}</span>
-                  </div>
-
-                  {/* Submission */}
-                  <div className="pmt-submission-block">
-                    <div className="pmt-sub-date-title">Last Submission</div>
-                    <div className="pmt-sub-file-row">
-                      <FileText size={12} style={{ color: "#718096" }} />
-                      <span>{project.submissionType}</span>
-                    </div>
-                    <div className="pmt-sub-date-title">{project.submissionDate}</div>
-                  </div>
-                </div>
-
-                {/* Vertical actions */}
-                <div className="pmt-card-actions">
-                  <button className="pmt-action-btn">
-                    <MessageSquare size={13} strokeWidth={2.4} />
-                    <span>Message</span>
-                  </button>
-                  <button
-                    className="pmt-action-btn"
-                    onClick={() => navigate(`/doctor/project-details?teamId=${project.team_id}&giveFeedback=true&type=committee`)}
-                  >
-                    <Edit size={13} strokeWidth={2.4} />
-                    <span>Give Feedback</span>
-                  </button>
-                  <button 
-                    className="pmt-action-btn grade"
-                    onClick={() => navigate(`/doctor/project-details?teamId=${project.team_id}&grade=true&type=committee`)}
-                  >
-                    <Star size={13} strokeWidth={2.4} />
-                    <span>Grade Project</span>
-                  </button>
-                  <button
-                    className="pmt-action-btn"
-                    onClick={() => navigate(`/doctor/project-details?teamId=${project.team_id}&type=committee`)}
-                  >
-                    <FolderOpen size={13} strokeWidth={2.4} />
-                    <span>Open Files</span>
-                  </button>
-                  <button className="pmt-action-btn">
-                    <Edit size={13} strokeWidth={2.4} />
-                    <span>Request Edit</span>
-                  </button>
-                </div>
+            {filteredProjects.length === 0 ? (
+              <div style={{
+                textAlign: 'center',
+                padding: '80px 40px',
+                background: '#ffffff',
+                borderRadius: '16px',
+                color: '#A0AEC0',
+                border: '1px dashed #E2E8F0',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.01)',
+                marginTop: '20px',
+                fontFamily: 'Inter, sans-serif'
+              }}>
+                <div style={{ fontSize: '48px', marginBottom: '16px' }}>👥</div>
+                <h3 style={{ margin: '0 0 8px', color: '#4A5568', fontWeight: 600 }}>No Managed Teams Found</h3>
+                <p style={{ margin: 0, fontSize: '13px', color: '#718096' }}>There are no projects or teams matching the selected criteria.</p>
               </div>
-            ))}
+            ) : (
+              filteredProjects.map((project) => (
+                <div key={project.team_id} className="pmt-card">
+                  {/* Image and side-badge */}
+                  <div className="pmt-card-left">
+                    <img src={project.image} alt={project.title} className="pmt-card-image" />
+                    <div
+                      className="pmt-card-badge"
+                      style={{ background: project.badgeColor }}
+                    >
+                      {project.badge === "Completed" && (
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 2 }}><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="2.5"/><polyline points="9 11 12 14 16 9"/></svg>
+                      )}
+                      {project.badge === "Pending Feedback" && (
+                        <MessageSquare size={13} strokeWidth={2.5} style={{ marginRight: 2 }} />
+                      )}
+                      {project.badge === "Nothing" && (
+                        <X size={13} strokeWidth={3} style={{ marginRight: 2 }} />
+                      )}
+                      {project.badge === "Pending Grades" && (
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 2 }}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                      )}
+                      <span>{project.badge}</span>
+                    </div>
+                  </div>
+
+                  {/* Details middle */}
+                  <div className="pmt-card-middle">
+                    <h2
+                      className="pmt-card-title"
+                      onClick={() => navigate(`/doctor/project-details?teamId=${project.team_id}&type=${project.type || 'supervised'}`)}
+                      style={{ cursor: "pointer" }}
+                    >
+                      {project.title}
+                    </h2>
+                    <p className="pmt-card-desc">"{project.description}"</p>
+                    <div className="pmt-card-tags">
+                      <span className="pmt-team-tag-label">Team {project.team_id}:</span>
+                      {project.tags.map((tag) => (
+                        <span key={tag} className="pmt-chip">{tag}</span>
+                      ))}
+                    </div>
+                    <p className="pmt-ta-info">
+                      Teacher Assistant: <strong>{project.ta}</strong>
+                    </p>
+                  </div>
+
+                  {/* Middle Right Status */}
+                  <div className="pmt-card-right-mid">
+                    {/* Avatars */}
+                    <div className="pmt-avatars">
+                      {project.avatars.map((url, idx) => (
+                        <img key={idx} src={url} alt="student" className="pmt-avatar" />
+                      ))}
+                      <div className="pmt-avatar-more">+2</div>
+                    </div>
+
+                    {/* Status Pill */}
+                    <div
+                      className="pmt-status-pill"
+                      style={{ background: project.statusBg, color: project.statusColor }}
+                    >
+                      {project.status === "On Track" && <Check size={11} strokeWidth={3} />}
+                      {project.status === "Delayed" && <AlertTriangle size={11} strokeWidth={3} />}
+                      {project.status === "Pending Submission" && <Clock size={11} strokeWidth={3} />}
+                      <span>{project.status}</span>
+                    </div>
+
+                    {/* Submission */}
+                    <div className="pmt-submission-block">
+                      <div className="pmt-sub-date-title">Last Submission</div>
+                      <div className="pmt-sub-file-row">
+                        <FileText size={12} style={{ color: "#718096" }} />
+                        <span>{project.submissionType}</span>
+                      </div>
+                      <div className="pmt-sub-date-title">{project.submissionDate}</div>
+                    </div>
+                  </div>
+
+                  {/* Vertical actions */}
+                  <div className="pmt-card-actions">
+                    <button className="pmt-action-btn">
+                      <MessageSquare size={13} strokeWidth={2.4} />
+                      <span>Message</span>
+                    </button>
+                    <button
+                      className="pmt-action-btn"
+                      onClick={() => navigate(`/doctor/project-details?teamId=${project.team_id}&giveFeedback=true&type=${project.type || 'supervised'}`)}
+                    >
+                      <Edit size={13} strokeWidth={2.4} />
+                      <span>Give Feedback</span>
+                    </button>
+                    <button 
+                      className="pmt-action-btn grade"
+                      onClick={() => navigate(`/doctor/project-details?teamId=${project.team_id}&grade=true&type=${project.type || 'supervised'}`)}
+                    >
+                      <Star size={13} strokeWidth={2.4} />
+                      <span>Grade Project</span>
+                    </button>
+                    <button
+                      className="pmt-action-btn"
+                      onClick={() => navigate(`/doctor/project-details?teamId=${project.team_id}&type=${project.type || 'supervised'}`)}
+                    >
+                      <FolderOpen size={13} strokeWidth={2.4} />
+                      <span>Open Files</span>
+                    </button>
+                    <button className="pmt-action-btn">
+                      <Edit size={13} strokeWidth={2.4} />
+                      <span>Request Edit</span>
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
           </section>
         </div>
 
@@ -1130,9 +1602,9 @@ export default function ProjectsManagedTeams() {
             <h3 className="pmt-side-title">Upcoming Meetings</h3>
             <div className="pmt-calendar-wrapper">
               <div className="pmt-calendar-header">
-                <button className="pmt-calendar-arrow">&lt;</button>
-                <div className="pmt-calendar-title-text">January 2026</div>
-                <button className="pmt-calendar-arrow">&gt;</button>
+                <button className="pmt-calendar-arrow" onClick={handlePrevMonth}>&lt;</button>
+                <div className="pmt-calendar-title-text">{MONTHS_LIST[calMonth]} {calYear}</div>
+                <button className="pmt-calendar-arrow" onClick={handleNextMonth}>&gt;</button>
               </div>
 
               <div className="pmt-calendar-weekdays">
@@ -1146,18 +1618,18 @@ export default function ProjectsManagedTeams() {
               </div>
 
               <div className="pmt-calendar-days">
-                {calendarWeeks.flat().map((day, idx) => {
-                  const faded = idx < 3 || idx > 33;
-                  const active = idx === 28 || idx === 31; // Days 26 and 29
+                {calendarCells.map((cell, idx) => {
+                  const hasMeet = checkHasMeeting(cell);
 
                   return (
                     <span
-                      key={`${day}-${idx}`}
-                      className={`pmt-calendar-day ${faded ? "pmt-calendar-muted" : ""} ${
-                        active ? "pmt-calendar-active" : ""
+                      key={`${cell.day}-${idx}`}
+                      className={`pmt-calendar-day ${cell.isMuted ? "pmt-calendar-muted" : ""} ${
+                        hasMeet ? "pmt-calendar-active" : ""
                       }`}
+                      title={hasMeet ? "Scheduled Meeting" : ""}
                     >
-                      {day}
+                      {cell.day}
                     </span>
                   );
                 })}
@@ -1168,96 +1640,86 @@ export default function ProjectsManagedTeams() {
           {/* Pending Feedback Section */}
           <div className="pmt-side-section">
             <h3 className="pmt-side-title">Pending Feedback</h3>
-            <div className="pmt-feedback-card">
-              <div className="pmt-feedback-icon">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-              </div>
-              <div className="pmt-feedback-info">
-                <h4 className="pmt-feedback-team">Team B</h4>
-                <p className="pmt-feedback-desc">AI Mental Health Companion</p>
-                <div className="pmt-feedback-time">3 days</div>
-              </div>
-              <div className="pmt-feedback-edit">
-                <Edit size={14} strokeWidth={2.5} />
-              </div>
-            </div>
+            {combinedPendingFeedback.length === 0 ? (
+              <p className="pmt-empty-text" style={{ fontSize: "12px", color: "#A0AEC0", margin: "8px 0" }}>No pending feedbacks</p>
+            ) : (
+              combinedPendingFeedback.slice(0, 2).map((item, idx) => (
+                <div
+                  key={idx}
+                  className="pmt-feedback-card"
+                  onClick={() => navigate(`/doctor/project-details?teamId=${item.teamId}&giveFeedback=true&type=${item.type || 'supervised'}`)}
+                  style={{ cursor: "pointer", marginBottom: "8px" }}
+                >
+                  <div className="pmt-feedback-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                  </div>
+                  <div className="pmt-feedback-info">
+                    <h4 className="pmt-feedback-team">{String(item.teamId).length > 2 ? item.title : `Team ${item.teamId}`}</h4>
+                    <p className="pmt-feedback-desc">{item.file?.name}</p>
+                    <div className="pmt-feedback-time">{item.file?.date}</div>
+                  </div>
+                  <div className="pmt-feedback-edit">
+                    <Edit size={14} strokeWidth={2.5} />
+                  </div>
+                </div>
+              ))
+            )}
           </div>
 
           {/* Recently Graded Section */}
           <div className="pmt-side-section">
             <h3 className="pmt-side-title">Recently Graded</h3>
-
-            <div className="pmt-graded-card">
-              <div className="pmt-graded-row">
-                <div className="pmt-graded-left">
-                  <Star className="pmt-graded-star" size={13} fill="currentColor" />
-                  <div>
-                    <h4 className="pmt-graded-team">Team C</h4>
-                    <p className="pmt-graded-desc">AI Mental Health Companion</p>
+            {recentlyGradedList.length === 0 ? (
+              <p className="pmt-empty-text" style={{ fontSize: "12px", color: "#A0AEC0", margin: "8px 0" }}>No graded milestones yet</p>
+            ) : (
+              recentlyGradedList.slice(0, 2).map((item, idx) => (
+                <div key={idx} className="pmt-graded-card" style={{ marginBottom: "8px" }}>
+                  <div className="pmt-graded-row">
+                    <div className="pmt-graded-left">
+                      <Star className="pmt-graded-star" size={13} fill="currentColor" />
+                      <div>
+                        <h4 className="pmt-graded-team">{item.teamId.length > 2 ? item.title : `Team ${item.teamId}`}</h4>
+                        <p className="pmt-graded-desc">{item.milestone}</p>
+                      </div>
+                    </div>
+                    <div className="pmt-grade-badge">{item.percent}%</div>
                   </div>
+                  <div className="pmt-graded-date">{item.date}</div>
                 </div>
-                <div className="pmt-grade-badge">92%</div>
-              </div>
-              <div className="pmt-graded-date">Jan 26</div>
-            </div>
-
-            <div className="pmt-graded-card">
-              <div className="pmt-graded-row">
-                <div className="pmt-graded-left">
-                  <Star className="pmt-graded-star" size={13} fill="currentColor" />
-                  <div>
-                    <h4 className="pmt-graded-team">Team E</h4>
-                    <p className="pmt-graded-desc">VR Career Simulator</p>
-                  </div>
-                </div>
-                <div className="pmt-grade-badge">86%</div>
-              </div>
-              <div className="pmt-graded-date">Jan 23</div>
-            </div>
+              ))
+            )}
           </div>
 
           {/* Recent Activity Section */}
           <div className="pmt-side-section">
             <h3 className="pmt-side-title">Recent Activity</h3>
             <div className="pmt-activity-card">
-              <div className="pmt-activity-row">
-                <FileText className="pmt-activity-icon" size={14} />
-                <div className="pmt-activity-copy">
-                  <div>
-                    <span className="pmt-activity-team-link" style={{ color: "#22C55E" }}>
-                      Team A
-                    </span>{" "}
-                    submitted UI Prototype
+              {recentActivityList.length === 0 ? (
+                <p className="pmt-empty-text" style={{ fontSize: "12px", color: "#A0AEC0", padding: "8px 0" }}>No recent activity</p>
+              ) : (
+                recentActivityList.slice(0, 3).map((item, idx) => (
+                  <div key={idx} className="pmt-activity-row" style={{ marginBottom: "8px" }}>
+                    {item.type === "submission" ? (
+                      <FileText className="pmt-activity-icon" size={14} />
+                    ) : (
+                      <Star className="pmt-activity-icon" size={14} />
+                    )}
+                    <div className="pmt-activity-copy">
+                      <div>
+                        <span
+                          className="pmt-activity-team-link"
+                          style={{ color: "#22C55E" }}
+                          onClick={() => navigate(`/doctor/project-details?teamId=${item.teamId}&type=committee`)}
+                        >
+                          {item.teamId.length > 2 ? "Team" : `Team ${item.teamId}`}
+                        </span>{" "}
+                        {item.action}
+                      </div>
+                      <div className="pmt-activity-time">{item.time}</div>
+                    </div>
                   </div>
-                  <div className="pmt-activity-time">30 mints ago</div>
-                </div>
-              </div>
-
-              <div className="pmt-activity-row">
-                <svg className="pmt-activity-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                <div className="pmt-activity-copy">
-                  <div>
-                    <span className="pmt-activity-team-link" style={{ color: "#22C55E" }}>
-                      Team C
-                    </span>{" "}
-                    uploaded a file in Messages
-                  </div>
-                  <div className="pmt-activity-time">2 hours ago</div>
-                </div>
-              </div>
-
-              <div className="pmt-activity-row">
-                <Calendar className="pmt-activity-icon" size={14} />
-                <div className="pmt-activity-copy">
-                  <div>
-                    <span className="pmt-activity-team-link" style={{ color: "#0052CC" }}>
-                      Team B
-                    </span>{" "}
-                    requested a meeting
-                  </div>
-                  <div className="pmt-activity-time">1 day ago</div>
-                </div>
-              </div>
+                ))
+              )}
             </div>
           </div>
 
