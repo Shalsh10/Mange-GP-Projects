@@ -8,7 +8,7 @@ export default defineConfig({
     proxy: {
       // هذا الإعداد سيجعل أي طلب يبدأ بـ /api يذهب تلقائياً للرابط الجديد
       '/api': {
-        target: 'https://mango-attendant-handyman.ngrok-free.dev',
+        target: 'https://d97c-154-183-132-96.ngrok-free.app',
         changeOrigin: true,
         secure: false,
       }

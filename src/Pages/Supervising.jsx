@@ -231,7 +231,7 @@ export default function Supervising() {
           let localImg = blockchainImg;
           if (item.project?.image_url) {
             const url = item.project.image_url;
-            localImg = url.startsWith("http") ? url : `https://mango-attendant-handyman.ngrok-free.dev${url.startsWith("/") ? "" : "/"}${url}`;
+            localImg = url.startsWith("http") ? url : `https://d97c-154-183-132-96.ngrok-free.app${url.startsWith("/") ? "" : "/"}${url}`;
           } else {
             if (teamId === 5) localImg = iotImg;
             else if (teamId === 12) localImg = blockchainImg;

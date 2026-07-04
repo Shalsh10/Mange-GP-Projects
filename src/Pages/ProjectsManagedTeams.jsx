@@ -899,7 +899,7 @@ const extractCurrentMilestones = (dataObj, projectCourses = []) => {
 const getImageUrl = (path) => {
   if (!path) return blockchainImg;
   if (path.startsWith("http")) return path;
-  return `https://mango-attendant-handyman.ngrok-free.dev${path.startsWith("/") ? "" : "/"}${path}`;
+  return `https://d97c-154-183-132-96.ngrok-free.app${path.startsWith("/") ? "" : "/"}${path}`;
 };
 
 

@@ -248,7 +248,7 @@ export default function AllDiscussions() {
         // Use raw fetch with Bearer token for binary download
         const token = localStorage.getItem("token");
         const response = await fetch(
-          "https://mango-attendant-handyman.ngrok-free.dev/api/supervisor/my-defense-committees/export",
+          "https://d97c-154-183-132-96.ngrok-free.app/api/supervisor/my-defense-committees/export",
           {
             method: "GET",
             headers: {
@@ -288,7 +288,7 @@ export default function AllDiscussions() {
               const link = document.createElement('a');
               const resolvedUrl = downloadUrl.startsWith("http") 
                 ? downloadUrl 
-                : `https://mango-attendant-handyman.ngrok-free.dev${downloadUrl.startsWith("/") ? "" : "/"}${downloadUrl}`;
+                : `https://d97c-154-183-132-96.ngrok-free.app${downloadUrl.startsWith("/") ? "" : "/"}${downloadUrl}`;
               
               link.href = resolvedUrl;
               link.setAttribute('download', fileName);

@@ -1,4 +1,4 @@
 export const settings = {
   // الرابط بدون كلمة api في النهاية
-  backendServer: 'https://mango-attendant-handyman.ngrok-free.dev'
+  backendServer: 'https://d97c-154-183-132-96.ngrok-free.app'
 };

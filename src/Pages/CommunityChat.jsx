@@ -16,7 +16,7 @@ import { customFetch } from "../apis/apiMain";
 import "./CommunityChat.css";
 
 // ─── helper: build full URL for profile images ──────────────────────────────
-const BASE = "https://mango-attendant-handyman.ngrok-free.dev";
+const BASE = "https://d97c-154-183-132-96.ngrok-free.app";
 function resolveImg(url) {
   if (!url) return null;
   return url.startsWith("http") ? url : `${BASE}${url.startsWith("/") ? "" : "/"}${url}`;

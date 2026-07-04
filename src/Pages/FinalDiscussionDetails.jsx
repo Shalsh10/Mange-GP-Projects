@@ -19,7 +19,7 @@ import "./FinalDiscussionDetails.css";
 const getImageUrl = (path) => {
   if (!path) return "https://images.unsplash.com/photo-1631553127988-348ecb321a48?auto=format&fit=crop&w=800&q=80";
   if (path.startsWith("http")) return path;
-  return `https://mango-attendant-handyman.ngrok-free.dev${path.startsWith("/") ? "" : "/"}${path}`;
+  return `https://d97c-154-183-132-96.ngrok-free.app${path.startsWith("/") ? "" : "/"}${path}`;
 };
 
 export default function FinalDiscussionDetails() {

@@ -931,7 +931,7 @@ export default function ProjectDashboard() {
         let resolvedImage = blockchainImg;
         if (projectObj.image_url) {
           const path = projectObj.image_url;
-          resolvedImage = path.startsWith("http") ? path : `https://mango-attendant-handyman.ngrok-free.dev${path.startsWith("/") ? "" : "/"}${path}`;
+          resolvedImage = path.startsWith("http") ? path : `https://d97c-154-183-132-96.ngrok-free.app${path.startsWith("/") ? "" : "/"}${path}`;
         } else {
           if (mappedId === "B") resolvedImage = aiHealthImg;
           else if (mappedId === "C" || mappedId === "E") resolvedImage = vrImg;
