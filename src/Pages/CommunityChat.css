@@ -768,3 +768,25 @@
   cursor: not-allowed;
 }
 
+/* ── Image message ── */
+.chat-msg-img {
+  max-width: 220px;
+  max-height: 180px;
+  border-radius: 8px;
+  display: block;
+  margin-bottom: 4px;
+  object-fit: cover;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.chat-msg-img:hover {
+  opacity: 0.88;
+}
+
+/* ── Optimistic message (sending...) ── */
+.chat-msg-bubble.optimistic {
+  opacity: 0.6;
+}
+
+

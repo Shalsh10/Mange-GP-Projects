@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+﻿import React, { useState, useEffect, useRef, useCallback } from "react";
 import DocHeader from "../Components/Header";
 import DocSidebar from "../Components/Sidebar";
 import {
@@ -9,35 +9,32 @@ import {
   CheckCheck,
   Loader2,
   MessageSquare,
+  Image as ImageIcon,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { useSearchParams } from "react-router-dom";
 import { customFetch } from "../apis/apiMain";
 import "./CommunityChat.css";
 
-// ─── Feature flag: اضبطها على true لما الباك اند يجهز endpoint الرسائل ───────
-const MESSAGES_API_READY = false;
-
-// ─── helper: build full URL for profile images ──────────────────────────────
+// ─── helper: resolve image URL ───────────────────────────────────────────────
 const BASE = "https://d97c-154-183-132-96.ngrok-free.app";
 function resolveImg(url) {
   if (!url) return null;
   return url.startsWith("http") ? url : `${BASE}${url.startsWith("/") ? "" : "/"}${url}`;
 }
 
-// ─── helper: format ISO timestamp to readable time ──────────────────────────
+// ─── helper: format ISO timestamp ────────────────────────────────────────────
 function formatTime(iso) {
   if (!iso) return "";
-  const d = new Date(iso);
-  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-// ─── Avatar placeholder (initials) ──────────────────────────────────────────
+// ─── Avatar placeholder (initials) ───────────────────────────────────────────
 function AvatarPlaceholder({ name, size = 36 }) {
   const initials = name
     ? name.split(" ").slice(0, 2).map((w) => w[0]).join("").toUpperCase()
     : "?";
-  const colors = ["#6366f1","#8b5cf6","#ec4899","#14b8a6","#f59e0b","#3b82f6","#10b981"];
+  const colors = ["#6366f1", "#8b5cf6", "#ec4899", "#14b8a6", "#f59e0b", "#3b82f6", "#10b981"];
   const bg = colors[name ? name.charCodeAt(0) % colors.length : 0];
   return (
     <div
@@ -49,45 +46,44 @@ function AvatarPlaceholder({ name, size = 36 }) {
   );
 }
 
+// ─── Token helper ─────────────────────────────────────────────────────────────
+const getToken = () => localStorage.getItem("token");
+const BASE_HEADERS = () => ({
+  Accept: "application/json",
+  Authorization: `Bearer ${getToken()}`,
+  "ngrok-skip-browser-warning": "69420",
+});
+
 export default function CommunityChat() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeConvId = searchParams.get("convId")
-    ? Number(searchParams.get("convId"))
-    : null;
+  const activeConvId = searchParams.get("convId") ? Number(searchParams.get("convId")) : null;
 
-  // ── State ──────────────────────────────────────────────────────────────────
-  const [conversations, setConversations] = useState([]);
-  const [loadingConvs, setLoadingConvs] = useState(true);
-
-  const [messages, setMessages] = useState([]);
-  const [loadingMsgs, setLoadingMsgs] = useState(false);
-
-  const [messageInput, setMessageInput] = useState("");
-  const [sendingMsg, setSendingMsg] = useState(false);
-
-  const [searchQuery, setSearchQuery] = useState("");
-
+  // ── State ────────────────────────────────────────────────────────────────────
+  const [conversations, setConversations]   = useState([]);
+  const [loadingConvs, setLoadingConvs]     = useState(true);
+  const [activeConvData, setActiveConvData] = useState(null); // { conversation, messages, pagination }
+  const [loadingMsgs, setLoadingMsgs]       = useState(false);
+  const [messageInput, setMessageInput]     = useState("");
+  const [sendingMsg, setSendingMsg]         = useState(false);
+  const [searchQuery, setSearchQuery]       = useState("");
   const messagesEndRef = useRef(null);
+  const fileInputRef   = useRef(null);
 
-  // current logged-in user (to distinguish my messages)
-  const currentUser = (() => {
-    try { return JSON.parse(localStorage.getItem("user")) || {}; } catch { return {}; }
-  })();
+  // ── Derived ──────────────────────────────────────────────────────────────────
+  const activeConvMeta = conversations.find((c) => c.conversation_id === activeConvId) || null;
+  const messages       = activeConvData?.messages || [];
+  const participants   = activeConvData?.conversation?.participants || activeConvMeta?.participants || [];
 
-  // ── Active conversation object ─────────────────────────────────────────────
-  const activeConv = conversations.find((c) => c.conversation_id === activeConvId) || null;
-
-  // ── Fetch conversations list ───────────────────────────────────────────────
+  // ── Fetch conversations list ──────────────────────────────────────────────────
   const fetchConversations = useCallback(async () => {
     setLoadingConvs(true);
     try {
-      const res = await customFetch("chat/conversations");
+      const res  = await customFetch("chat/conversations");
       const data = res?.data || res || [];
-      setConversations(Array.isArray(data) ? data : []);
-
-      // auto-select first if none selected
-      if (!activeConvId && Array.isArray(data) && data.length > 0) {
-        setSearchParams({ convId: data[0].conversation_id });
+      const list = Array.isArray(data) ? data : [];
+      setConversations(list);
+      if (!activeConvId && list.length > 0) {
+        setSearchParams({ convId: list[0].conversation_id });
       }
     } catch (err) {
       toast.error("فشل تحميل المحادثات: " + err.message);
@@ -96,52 +92,28 @@ export default function CommunityChat() {
     }
   }, []);
 
-  // ── Fetch messages for a conversation ─────────────────────────────────────
-  const fetchMessages = useCallback(async (convId) => {
+  // ── Fetch conversation detail + messages: GET /api/chat/{id} ─────────────────
+  const fetchConversationDetail = useCallback(async (convId) => {
     if (!convId) return;
-    // الـ endpoint مش جاهز على الباك اند لسه
-    if (!MESSAGES_API_READY) {
-      setMessages([]);
-      setLoadingMsgs(false);
-      return;
-    }
     setLoadingMsgs(true);
-    setMessages([]);
+    setActiveConvData(null);
     try {
-      const token = localStorage.getItem("token");
-      const response = await fetch(`/api/chat/conversations/${convId}/messages`, {
-        headers: {
-          Accept: "application/json",
-          Authorization: `Bearer ${token}`,
-          "ngrok-skip-browser-warning": "69420",
-        },
+      const response = await fetch(`/api/chat/${convId}`, {
+        headers: BASE_HEADERS(),
       });
-      if (!response.ok) { setMessages([]); return; }
+      if (!response.ok) { setActiveConvData(null); return; }
       const text = await response.text();
-      if (!text) { setMessages([]); return; }
+      if (!text) { setActiveConvData(null); return; }
       const res = JSON.parse(text);
-      const data = res?.data || res || [];
-      setMessages(Array.isArray(data) ? data : []);
+      setActiveConvData(res?.data || null);
     } catch {
-      setMessages([]);
+      setActiveConvData(null);
     } finally {
       setLoadingMsgs(false);
     }
   }, []);
 
-
-  // ── Effects ────────────────────────────────────────────────────────────────
-  useEffect(() => { fetchConversations(); }, []);
-
-  useEffect(() => {
-    if (activeConvId) fetchMessages(activeConvId);
-  }, [activeConvId]);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
-
-  // ── Send message ──────────────────────────────────────────────────────────
+  // ── Send message: POST /api/chat/messages (FormData) ─────────────────────────
   const handleSendMessage = async (e) => {
     if (e) e.preventDefault();
     if (!messageInput.trim() || !activeConvId) return;
@@ -150,54 +122,77 @@ export default function CommunityChat() {
     setMessageInput("");
     setSendingMsg(true);
 
-    // optimistic UI
+    // Optimistic UI
     const optimistic = {
       id: `opt-${Date.now()}`,
-      sender_id: currentUser?.id,
-      sender_name: currentUser?.name || "أنت",
       message: text,
+      type: "text",
+      file_url: null,
+      sender: { id: null, name: "أنت", profile_image_url: null },
       created_at: new Date().toISOString(),
+      is_mine: true,
       isOptimistic: true,
     };
-    setMessages((prev) => [...prev, optimistic]);
+    setActiveConvData((prev) =>
+      prev ? { ...prev, messages: [...(prev.messages || []), optimistic] } : prev
+    );
 
     try {
-      const token = localStorage.getItem("token");
-      const sendRes = await fetch(`/api/chat/conversations/${activeConvId}/messages`, {
+      const formData = new FormData();
+      formData.append("conversation_id", activeConvId);
+      formData.append("message", text);
+
+      const res = await fetch("/api/chat/messages", {
         method: "POST",
         headers: {
           Accept: "application/json",
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${getToken()}`,
           "ngrok-skip-browser-warning": "69420",
+          // لا تضع Content-Type لأن FormData بيتحددها أوتوماتيك
         },
-        body: JSON.stringify({ message: text }),
+        body: formData,
       });
-      if (sendRes.ok) {
-        fetchMessages(activeConvId);
+
+      if (res.ok) {
+        // حدّث القائمة والرسائل
+        fetchConversationDetail(activeConvId);
+        fetchConversations();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err?.message || "فشل إرسال الرسالة");
+        // Rollback optimistic
+        setActiveConvData((prev) =>
+          prev
+            ? { ...prev, messages: prev.messages.filter((m) => m.id !== optimistic.id) }
+            : prev
+        );
+        setMessageInput(text);
       }
-      // إذا كان الـ endpoint مش موجود لسه، الرسالة الـ optimistic تفضل
     } catch {
-      // silent fail - optimistic message stays visible
+      toast.error("خطأ في الاتصال بالخادم");
+      setActiveConvData((prev) =>
+        prev
+          ? { ...prev, messages: prev.messages.filter((m) => m.id !== optimistic.id) }
+          : prev
+      );
+      setMessageInput(text);
     } finally {
       setSendingMsg(false);
     }
   };
 
+  // ── Effects ───────────────────────────────────────────────────────────────────
+  useEffect(() => { fetchConversations(); }, []);
+  useEffect(() => { if (activeConvId) fetchConversationDetail(activeConvId); }, [activeConvId]);
+  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
-  // ── Filter conversations by search ────────────────────────────────────────
+  // ── Filter ────────────────────────────────────────────────────────────────────
   const filteredConvs = conversations.filter((c) =>
     c.team_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     c.leader_name?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // ── Check if a message belongs to the current user ────────────────────────
-  const isMyMessage = (msg) => {
-    if (msg.isOptimistic) return true;
-    return msg.sender_id === currentUser?.id || msg.user_id === currentUser?.id;
-  };
-
-  // ── Render ─────────────────────────────────────────────────────────────────
+  // ── Render ────────────────────────────────────────────────────────────────────
   return (
     <>
       <DocHeader />
@@ -205,14 +200,14 @@ export default function CommunityChat() {
         <DocSidebar />
 
         <div className="chat-main-wrap">
-          {/* ── Header Bar ── */}
+          {/* Header */}
           <div className="chat-header-bar">
             <div className="chat-header-left">
-              {activeConv ? (
+              {activeConvMeta ? (
                 <>
-                  <h2>{activeConv.team_name}</h2>
+                  <h2>{activeConvMeta.team_name}</h2>
                   <span className="chat-header-sub">
-                    Leader: {activeConv.leader_name} &nbsp;·&nbsp; {activeConv.participants?.length || 0} members
+                    Leader: {activeConvMeta.leader_name} &nbsp;·&nbsp; {participants.length} members
                   </span>
                 </>
               ) : (
@@ -223,7 +218,7 @@ export default function CommunityChat() {
 
           <div className="chat-body-layout">
 
-            {/* ── LEFT SIDEBAR: Conversations List ── */}
+            {/* ── LEFT: Conversations list ── */}
             <div className="chat-left-sidebar">
               <div className="chat-search-bar">
                 <Search size={15} />
@@ -265,9 +260,7 @@ export default function CommunityChat() {
                           </span>
                         </div>
                         {conv.last_message_at && (
-                          <span className="conv-item-time">
-                            {formatTime(conv.last_message_at)}
-                          </span>
+                          <span className="conv-item-time">{formatTime(conv.last_message_at)}</span>
                         )}
                       </li>
                     );
@@ -278,7 +271,7 @@ export default function CommunityChat() {
 
             {/* ── MIDDLE: Chat Viewport ── */}
             <div className="chat-viewport">
-              {!activeConv ? (
+              {!activeConvMeta ? (
                 <div className="chat-empty-feed">
                   <MessageSquare size={48} opacity={0.3} />
                   <p>اختر محادثة من القائمة</p>
@@ -287,22 +280,19 @@ export default function CommunityChat() {
                 <>
                   {/* Members row */}
                   <div className="chat-members-row">
-                    {activeConv.participants?.map((p) => {
+                    {participants.map((p) => {
                       const imgSrc = resolveImg(p.profile_image_url);
                       return (
-                        <div key={p.user_id} className="chat-member-avatar-wrapper" title={`${p.name} (${p.role_code})`}>
-                          {imgSrc ? (
-                            <img src={imgSrc} alt={p.name} className="chat-member-avatar" />
-                          ) : (
-                            <AvatarPlaceholder name={p.name} size={36} />
-                          )}
-                          <span className="member-role-badge">{p.role_code}</span>
+                        <div key={p.user_id} className="chat-member-avatar-wrapper" title={p.name}>
+                          {imgSrc
+                            ? <img src={imgSrc} alt={p.name} className="chat-member-avatar" />
+                            : <AvatarPlaceholder name={p.name} size={36} />}
                         </div>
                       );
                     })}
                   </div>
 
-                  {/* Messages scroll */}
+                  {/* Messages */}
                   <div className="chat-messages-scroll">
                     {loadingMsgs ? (
                       <div className="chat-empty-feed">
@@ -316,31 +306,45 @@ export default function CommunityChat() {
                       </div>
                     ) : (
                       messages.map((msg) => {
-                        const mine = isMyMessage(msg);
-                        const senderName = msg.sender_name || msg.name || "مستخدم";
-                        const imgSrc = resolveImg(msg.profile_image_url || msg.avatar);
+                        const mine       = msg.is_mine || msg.isOptimistic;
+                        const sender     = msg.sender || {};
+                        const senderName = sender.name || "مستخدم";
+                        const avatarSrc  = resolveImg(sender.profile_image_url);
+
                         return (
                           <div
                             key={msg.id}
                             className={`chat-message-row ${mine ? "doctor-right" : "student-left"}`}
                           >
                             {!mine && (
-                              imgSrc
-                                ? <img src={imgSrc} alt={senderName} className="chat-msg-avatar" />
+                              avatarSrc
+                                ? <img src={avatarSrc} alt={senderName} className="chat-msg-avatar" />
                                 : <AvatarPlaceholder name={senderName} size={34} />
                             )}
+
                             <div className="chat-msg-bubble-wrap">
                               {!mine && (
                                 <span className="chat-msg-sender-meta">
                                   {senderName}
-                                  {msg.role_code && <span className="chat-msg-role"> {msg.role_code}</span>}
+                                  {sender.track && <span className="chat-msg-role"> · {sender.track}</span>}
                                 </span>
                               )}
-                              <div className="chat-msg-bubble">
-                                <p>{msg.message || msg.text}</p>
+                              <div className={`chat-msg-bubble ${msg.isOptimistic ? "optimistic" : ""}`}>
+                                {/* نوع الرسالة: image أو text */}
+                                {msg.type === "image" && msg.file_url ? (
+                                  <a href={resolveImg(msg.file_url)} target="_blank" rel="noopener noreferrer">
+                                    <img
+                                      src={resolveImg(msg.file_url)}
+                                      alt="attachment"
+                                      className="chat-msg-img"
+                                    />
+                                  </a>
+                                ) : null}
+                                {msg.message && <p>{msg.message}</p>}
                                 <div className="chat-msg-time-status">
-                                  <span>{formatTime(msg.created_at || msg.time)}</span>
-                                  {mine && <CheckCheck size={13} className="chat-double-check" />}
+                                  <span>{formatTime(msg.created_at)}</span>
+                                  {mine && !msg.isOptimistic && <CheckCheck size={13} className="chat-double-check" />}
+                                  {msg.isOptimistic && <Loader2 size={11} className="spin-icon" style={{ opacity: 0.5 }} />}
                                 </div>
                               </div>
                             </div>
@@ -372,30 +376,30 @@ export default function CommunityChat() {
               )}
             </div>
 
-            {/* ── RIGHT SIDEBAR: Members detail ── */}
+            {/* ── RIGHT: Members detail ── */}
             <div className="chat-right-sidebar">
               <div className="chat-right-card">
                 <h3>
                   <Users size={15} style={{ marginRight: 6 }} />
                   أعضاء الفريق
                 </h3>
-                {!activeConv ? (
+                {participants.length === 0 ? (
                   <p className="chat-empty-subtext">اختر محادثة أولاً</p>
                 ) : (
                   <div className="chat-members-detail-list">
-                    {activeConv.participants?.map((p) => {
+                    {participants.map((p) => {
                       const imgSrc = resolveImg(p.profile_image_url);
+                      const role   = p.role_code || (p.role === "admin" ? "TA" : p.role === "member" ? "Member" : p.role);
                       return (
                         <div key={p.user_id} className="chat-member-detail-row">
                           <div className="cmd-avatar">
                             {imgSrc
                               ? <img src={imgSrc} alt={p.name} />
-                              : <AvatarPlaceholder name={p.name} size={36} />
-                            }
+                              : <AvatarPlaceholder name={p.name} size={36} />}
                           </div>
                           <div className="cmd-info">
                             <span className="cmd-name">{p.name}</span>
-                            <span className={`cmd-badge role-${p.role_code?.toLowerCase()}`}>{p.role_code}</span>
+                            <span className={`cmd-badge role-${role?.toLowerCase()}`}>{role}</span>
                           </div>
                         </div>
                       );
