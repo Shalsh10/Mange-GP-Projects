@@ -532,3 +532,239 @@
 .chat-poll-option input {
   margin: 0;
 }
+
+/* ── LEFT SIDEBAR: Conversations ── */
+.chat-left-sidebar {
+  width: 270px;
+  background: #ffffff;
+  border-right: 1px solid #e5e7eb;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.chat-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid #f1f5f9;
+  color: #94a3b8;
+}
+
+.chat-search-bar input {
+  flex: 1;
+  border: none;
+  outline: none;
+  font-size: 13px;
+  color: #1e293b;
+  background: transparent;
+}
+
+.chat-search-bar input::placeholder {
+  color: #94a3b8;
+}
+
+.chat-conv-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.chat-conv-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  border-bottom: 1px solid #f8fafc;
+}
+
+.chat-conv-item:hover {
+  background: #f8fafc;
+}
+
+.chat-conv-item.active {
+  background: #eff6ff;
+  border-left: 3px solid #3b82f6;
+}
+
+.conv-item-avatar {
+  flex-shrink: 0;
+}
+
+.conv-item-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.conv-item-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1e293b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.conv-item-sub {
+  font-size: 11px;
+  color: #94a3b8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+}
+
+.conv-item-time {
+  font-size: 10px;
+  color: #94a3b8;
+  flex-shrink: 0;
+}
+
+/* ── Loading / empty state ── */
+.chat-loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 40px 20px;
+  color: #94a3b8;
+  font-size: 13px;
+  text-align: center;
+}
+
+/* ── Avatar Placeholder (initials) ── */
+.avatar-placeholder {
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  color: #ffffff;
+  flex-shrink: 0;
+  letter-spacing: 0.5px;
+}
+
+/* ── Member avatar wrapper ── */
+.chat-member-avatar-wrapper {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.member-role-badge {
+  font-size: 9px;
+  font-weight: 600;
+  color: #64748b;
+  background: #f1f5f9;
+  border-radius: 4px;
+  padding: 1px 4px;
+  white-space: nowrap;
+}
+
+/* ── Header sub text ── */
+.chat-header-sub {
+  font-size: 12px;
+  color: #64748b;
+  display: block;
+  margin-top: 2px;
+}
+
+/* ── Right sidebar members detail ── */
+.chat-members-detail-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.chat-member-detail-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cmd-avatar img,
+.cmd-avatar .avatar-placeholder {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.cmd-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.cmd-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: #1e293b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cmd-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 20px;
+  display: inline-block;
+  width: fit-content;
+}
+
+.cmd-badge.role-doctor {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.cmd-badge.role-ta {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.cmd-badge.role-student {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+/* ── Spin animation for loader ── */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.spin-icon {
+  animation: spin 0.8s linear infinite;
+}
+
+/* ── Empty feed flex column ── */
+.chat-empty-feed {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  color: #94a3b8;
+  font-size: 13px;
+  gap: 10px;
+}
+
+/* ── disabled send button ── */
+.chat-send-btn:disabled {
+  background: #94a3b8;
+  cursor: not-allowed;
+}
+

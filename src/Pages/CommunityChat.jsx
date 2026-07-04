@@ -1,303 +1,377 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import DocHeader from "../Components/Header";
 import DocSidebar from "../Components/Sidebar";
-import { 
-  Send, 
-  Plus, 
-  FileText, 
-  Link2, 
-  Users, 
-  TrendingUp, 
+import {
+  Send,
+  Plus,
+  Users,
   Search,
-  CheckCheck
+  CheckCheck,
+  Loader2,
+  MessageSquare,
 } from "lucide-react";
 import toast from "react-hot-toast";
+import { useSearchParams } from "react-router-dom";
+import { customFetch } from "../apis/apiMain";
 import "./CommunityChat.css";
 
-// Premium mock data for teams and their respective chats
-const INITIAL_TEAMS_DATA = [
-  {
-    id: "A",
-    name: "Team A",
-    title: "Smart Health Monitoring System",
-    unread: 0,
-    members: [
-      { name: "Jav", role: "Engineering", avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&q=80", active: true },
-      { name: "Aubrey", role: "Product", avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=100&q=80", active: true },
-      { name: "Janet", role: "Engineering", avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=100&q=80", active: true },
-      { name: "Marc", role: "Design", avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=100&q=80", active: false },
-    ],
-    sharedLinks: [
-      { type: "figma", label: "Figma Design System (Project Prototype)", url: "https://figma.com" },
-      { type: "github", label: "GitHub Repository (Front-end Source Code)", url: "https://github.com" },
-      { type: "docs", label: "Research Paper Draft (Google Docs)", url: "https://docs.google.com" }
-    ],
-    messages: [
-      { id: 1, sender: "doctor", text: "Hi team 👋", time: "11:31 AM", isDoctor: true },
-      { id: 2, sender: "doctor", text: "Anyone on for lunch today?", time: "11:31 AM", isDoctor: true },
-      { id: 3, sender: "Jav", role: "Engineering", text: "I'm down! Any ideas??", time: "11:35 AM", avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&q=80" },
-      { id: 4, sender: "doctor", text: "I am down for whatever!", time: "11:36 AM", isDoctor: true },
-      { id: 5, sender: "Aubrey", role: "Product", text: "I was thinking the cafe downtown", time: "11:45 AM", avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=100&q=80" },
-      { id: 6, sender: "Aubrey", role: "Product", text: "But limited vegan options @Janet!", time: "11:46 AM", avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=100&q=80" },
-      { id: 7, sender: "doctor", text: "Agreed", time: "11:52 AM", isDoctor: true },
-      { id: 8, sender: "Janet", role: "Engineering", text: "That works- I was actually planning to get a smoothie anyways 👍", time: "12:03 PM", avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=100&q=80" },
-      { id: 9, sender: "Janet", role: "Product", text: "On for 12:30 PM then?", time: "12:04 PM", avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=100&q=80" },
-    ]
-  },
-  {
-    id: "B",
-    name: "Team B",
-    title: "Blockchain-based Certificate System",
-    unread: 28,
-    members: [
-      { name: "Ali", role: "Blockchain", avatar: "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=100&q=80", active: true },
-      { name: "Sara", role: "Frontend", avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=100&q=80", active: false }
-    ],
-    sharedLinks: [
-      { type: "github", label: "Smart Contracts Repo", url: "https://github.com" }
-    ],
-    messages: [
-      { id: 1, sender: "Ali", role: "Blockchain", text: "Dr. Mohammed, we have deployed the contracts to Sepolia testnet!", time: "09:15 AM", avatar: "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=100&q=80" }
-    ]
-  },
-  {
-    id: "C",
-    name: "Team C",
-    title: "VR Career Simulator",
-    unread: 0,
-    members: [
-      { name: "Kareem", role: "Unity Dev", avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=100&q=80", active: true },
-      { name: "Hoda", role: "3D Artist", avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&q=80", active: true }
-    ],
-    sharedLinks: [
-      { type: "figma", label: "VR Storyboard & Assets", url: "https://figma.com" }
-    ],
-    messages: [
-      { id: 1, sender: "doctor", text: "How is the progress on the hospital environment?", time: "Yesterday", isDoctor: true }
-    ]
-  },
-  {
-    id: "D",
-    name: "Team D",
-    title: "IoT Smart Campus Platform",
-    unread: 0,
-    members: [
-      { name: "Wael", role: "Hardware", avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=100&q=80", active: false }
-    ],
-    sharedLinks: [],
-    messages: []
-  },
-  {
-    id: "E",
-    name: "Team E",
-    title: "AI Attendance Recognition",
-    unread: 32,
-    members: [
-      { name: "Mona", role: "AI Engineer", avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=100&q=80", active: true }
-    ],
-    sharedLinks: [],
-    messages: [
-      { id: 1, sender: "Mona", role: "AI Engineer", text: "We updated the facial recognition model to 98% accuracy.", time: "2 days ago", avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=100&q=80" }
-    ]
-  }
-];
+// ─── helper: build full URL for profile images ──────────────────────────────
+const BASE = "https://mango-attendant-handyman.ngrok-free.dev";
+function resolveImg(url) {
+  if (!url) return null;
+  return url.startsWith("http") ? url : `${BASE}${url.startsWith("/") ? "" : "/"}${url}`;
+}
 
-import { useSearchParams } from "react-router-dom";
+// ─── helper: format ISO timestamp to readable time ──────────────────────────
+function formatTime(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+// ─── Avatar placeholder (initials) ──────────────────────────────────────────
+function AvatarPlaceholder({ name, size = 36 }) {
+  const initials = name
+    ? name.split(" ").slice(0, 2).map((w) => w[0]).join("").toUpperCase()
+    : "?";
+  const colors = ["#6366f1","#8b5cf6","#ec4899","#14b8a6","#f59e0b","#3b82f6","#10b981"];
+  const bg = colors[name ? name.charCodeAt(0) % colors.length : 0];
+  return (
+    <div
+      className="avatar-placeholder"
+      style={{ width: size, height: size, backgroundColor: bg, fontSize: size * 0.38 }}
+    >
+      {initials}
+    </div>
+  );
+}
 
 export default function CommunityChat() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeTeamId = searchParams.get("teamId") || "A";
+  const activeConvId = searchParams.get("convId")
+    ? Number(searchParams.get("convId"))
+    : null;
 
-  const [teamsData, setTeamsData] = useState(INITIAL_TEAMS_DATA);
+  // ── State ──────────────────────────────────────────────────────────────────
+  const [conversations, setConversations] = useState([]);
+  const [loadingConvs, setLoadingConvs] = useState(true);
+
+  const [messages, setMessages] = useState([]);
+  const [loadingMsgs, setLoadingMsgs] = useState(false);
+
   const [messageInput, setMessageInput] = useState("");
-  const [selectedPoll, setSelectedPoll] = useState("");
+  const [sendingMsg, setSendingMsg] = useState(false);
+
+  const [searchQuery, setSearchQuery] = useState("");
+
   const messagesEndRef = useRef(null);
 
-  const activeTeam = teamsData.find(t => t.id === activeTeamId) || teamsData[0];
+  // current logged-in user (to distinguish my messages)
+  const currentUser = (() => {
+    try { return JSON.parse(localStorage.getItem("user")) || {}; } catch { return {}; }
+  })();
 
-  // Auto-scroll to bottom of messages
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
+  // ── Active conversation object ─────────────────────────────────────────────
+  const activeConv = conversations.find((c) => c.conversation_id === activeConvId) || null;
 
-  useEffect(() => {
-    scrollToBottom();
-  }, [activeTeam.messages]);
+  // ── Fetch conversations list ───────────────────────────────────────────────
+  const fetchConversations = useCallback(async () => {
+    setLoadingConvs(true);
+    try {
+      const res = await customFetch("chat/conversations");
+      const data = res?.data || res || [];
+      setConversations(Array.isArray(data) ? data : []);
 
-  // Clear unread count on team select
-  useEffect(() => {
-    setTeamsData(prev => prev.map(t => t.id === activeTeamId ? { ...t, unread: 0 } : t));
-  }, [activeTeamId]);
-
-  // Handle sending a new message
-  const handleSendMessage = (e) => {
-    if (e) e.preventDefault();
-    if (!messageInput.trim()) return;
-
-    const newMsg = {
-      id: Date.now(),
-      sender: "doctor",
-      text: messageInput.trim(),
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      isDoctor: true
-    };
-
-    setTeamsData(prev => prev.map(t => {
-      if (t.id === activeTeamId) {
-        return {
-          ...t,
-          messages: [...t.messages, newMsg]
-        };
+      // auto-select first if none selected
+      if (!activeConvId && Array.isArray(data) && data.length > 0) {
+        setSearchParams({ convId: data[0].conversation_id });
       }
-      return t;
-    }));
+    } catch (err) {
+      toast.error("فشل تحميل المحادثات: " + err.message);
+    } finally {
+      setLoadingConvs(false);
+    }
+  }, []);
+
+  // ── Fetch messages for a conversation ─────────────────────────────────────
+  const fetchMessages = useCallback(async (convId) => {
+    if (!convId) return;
+    setLoadingMsgs(true);
+    setMessages([]);
+    try {
+      const res = await customFetch(`chat/conversations/${convId}/messages`);
+      const data = res?.data || res || [];
+      setMessages(Array.isArray(data) ? data : []);
+    } catch {
+      setMessages([]);
+    } finally {
+      setLoadingMsgs(false);
+    }
+  }, []);
+
+  // ── Effects ────────────────────────────────────────────────────────────────
+  useEffect(() => { fetchConversations(); }, []);
+
+  useEffect(() => {
+    if (activeConvId) fetchMessages(activeConvId);
+  }, [activeConvId]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  // ── Send message ──────────────────────────────────────────────────────────
+  const handleSendMessage = async (e) => {
+    if (e) e.preventDefault();
+    if (!messageInput.trim() || !activeConvId) return;
+
+    const text = messageInput.trim();
     setMessageInput("");
+    setSendingMsg(true);
+
+    // optimistic UI
+    const optimistic = {
+      id: `opt-${Date.now()}`,
+      sender_id: currentUser?.id,
+      sender_name: currentUser?.name || "أنت",
+      message: text,
+      created_at: new Date().toISOString(),
+      isOptimistic: true,
+    };
+    setMessages((prev) => [...prev, optimistic]);
+
+    try {
+      await customFetch(`chat/conversations/${activeConvId}/messages`, {
+        method: "POST",
+        body: JSON.stringify({ message: text }),
+      });
+      fetchMessages(activeConvId);
+    } catch (err) {
+      toast.error("فشل إرسال الرسالة: " + err.message);
+      setMessages((prev) => prev.filter((m) => m.id !== optimistic.id));
+    } finally {
+      setSendingMsg(false);
+    }
   };
 
+  // ── Filter conversations by search ────────────────────────────────────────
+  const filteredConvs = conversations.filter((c) =>
+    c.team_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    c.leader_name?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  // ── Check if a message belongs to the current user ────────────────────────
+  const isMyMessage = (msg) => {
+    if (msg.isOptimistic) return true;
+    return msg.sender_id === currentUser?.id || msg.user_id === currentUser?.id;
+  };
+
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <>
       <DocHeader />
       <div className="chat-container">
         <DocSidebar />
-        
+
         <div className="chat-main-wrap">
-          {/* Active Team Header Bar */}
+          {/* ── Header Bar ── */}
           <div className="chat-header-bar">
             <div className="chat-header-left">
-              <h2>{activeTeam.name} - {activeTeam.title}</h2>
+              {activeConv ? (
+                <>
+                  <h2>{activeConv.team_name}</h2>
+                  <span className="chat-header-sub">
+                    Leader: {activeConv.leader_name} &nbsp;·&nbsp; {activeConv.participants?.length || 0} members
+                  </span>
+                </>
+              ) : (
+                <h2>Community Chat</h2>
+              )}
             </div>
-            <button className="chat-progress-btn" onClick={() => toast.success("Opening Team Progress Dashboard...")}>
-              View Team Progress
-            </button>
           </div>
 
           <div className="chat-body-layout">
-            
-            {/* MIDDLE CHAT VIEWPORT */}
-            <div className="chat-viewport">
-              {/* Online members list */}
-              <div className="chat-members-row">
-                {activeTeam.members.map((m, index) => (
-                  <div key={index} className="chat-member-avatar-wrapper">
-                    <img src={m.avatar} alt={m.name} className="chat-member-avatar" />
-                    {m.active && <span className="chat-status-dot"></span>}
-                  </div>
-                ))}
+
+            {/* ── LEFT SIDEBAR: Conversations List ── */}
+            <div className="chat-left-sidebar">
+              <div className="chat-search-bar">
+                <Search size={15} />
+                <input
+                  type="text"
+                  placeholder="ابحث عن فريق..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
               </div>
 
-              {/* Chat Message Scroll Area */}
-              <div className="chat-messages-scroll">
-                <div className="chat-date-divider">
-                  <span>Today</span>
+              {loadingConvs ? (
+                <div className="chat-loading-state">
+                  <Loader2 size={22} className="spin-icon" />
+                  <span>جاري تحميل المحادثات...</span>
                 </div>
-
-                {activeTeam.messages.length === 0 ? (
-                  <div className="chat-empty-feed">
-                    <p>No messages yet. Say hello to start the discussion!</p>
-                  </div>
-                ) : (
-                  activeTeam.messages.map((msg) => (
-                    <div 
-                      key={msg.id} 
-                      className={`chat-message-row ${msg.isDoctor ? "doctor-right" : "student-left"}`}
-                    >
-                      {!msg.isDoctor && (
-                        <img src={msg.avatar} alt={msg.sender} className="chat-msg-avatar" />
-                      )}
-
-                      <div className="chat-msg-bubble-wrap">
-                        {!msg.isDoctor && (
-                          <span className="chat-msg-sender-meta">
-                            {msg.sender} <span className="chat-msg-role">{msg.role}</span>
+              ) : filteredConvs.length === 0 ? (
+                <div className="chat-loading-state">
+                  <MessageSquare size={22} />
+                  <span>لا توجد محادثات</span>
+                </div>
+              ) : (
+                <ul className="chat-conv-list">
+                  {filteredConvs.map((conv) => {
+                    const isActive = conv.conversation_id === activeConvId;
+                    return (
+                      <li
+                        key={conv.conversation_id}
+                        className={`chat-conv-item ${isActive ? "active" : ""}`}
+                        onClick={() => setSearchParams({ convId: conv.conversation_id })}
+                      >
+                        <div className="conv-item-avatar">
+                          <AvatarPlaceholder name={conv.team_name} size={40} />
+                        </div>
+                        <div className="conv-item-info">
+                          <span className="conv-item-name">{conv.team_name}</span>
+                          <span className="conv-item-sub">
+                            {conv.last_message || "لا توجد رسائل بعد"}
+                          </span>
+                        </div>
+                        {conv.last_message_at && (
+                          <span className="conv-item-time">
+                            {formatTime(conv.last_message_at)}
                           </span>
                         )}
-                        <div className="chat-msg-bubble">
-                          <p>{msg.text}</p>
-                          <div className="chat-msg-time-status">
-                            <span>{msg.time}</span>
-                            {msg.isDoctor && <CheckCheck size={13} className="chat-double-check" />}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))
-                )}
-                <div ref={messagesEndRef} />
-              </div>
-
-              {/* Message Input Box */}
-              <form onSubmit={handleSendMessage} className="chat-input-bar">
-                <button type="button" className="chat-attach-btn" onClick={() => toast.success("Attachments feature coming soon!")}>
-                  <Plus size={20} />
-                </button>
-                <input 
-                  type="text" 
-                  placeholder="When we gonna meet?" 
-                  value={messageInput}
-                  onChange={(e) => setMessageInput(e.target.value)}
-                  className="chat-input-field"
-                />
-                <button type="submit" className="chat-send-btn">
-                  <Send size={16} />
-                </button>
-              </form>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
             </div>
 
-            {/* RIGHT SIDEBAR: SHARED LINKS & QUICK POLL */}
-            <div className="chat-right-sidebar">
-              {/* Shared Files & Links */}
-              <div className="chat-right-card">
-                <h3>Shared Files & Links</h3>
-                <div className="chat-shared-list">
-                  {activeTeam.sharedLinks.length === 0 ? (
-                    <p className="chat-empty-subtext">No shared links yet.</p>
-                  ) : (
-                    activeTeam.sharedLinks.map((link, idx) => (
-                      <a 
-                        key={idx} 
-                        href={link.url} 
-                        target="_blank" 
-                        rel="noopener noreferrer" 
-                        className="chat-shared-item"
-                      >
-                        {link.type === "figma" && <Link2 size={14} className="shared-icon figma" />}
-                        {link.type === "github" && <Link2 size={14} className="shared-icon github" />}
-                        {link.type === "docs" && <FileText size={14} className="shared-icon docs" />}
-                        <span>{link.label}</span>
-                      </a>
-                    ))
-                  )}
+            {/* ── MIDDLE: Chat Viewport ── */}
+            <div className="chat-viewport">
+              {!activeConv ? (
+                <div className="chat-empty-feed">
+                  <MessageSquare size={48} opacity={0.3} />
+                  <p>اختر محادثة من القائمة</p>
                 </div>
-              </div>
-
-              {/* Quick Poll */}
-              <div className="chat-right-card">
-                <h3>Quick Poll</h3>
-                <div className="chat-poll-wrap">
-                  <h4 className="chat-poll-question">Preferred meeting time?</h4>
-                  <div className="chat-poll-options">
-                    {["Monday AM", "Tuesday PM", "Friday AM"].map((option) => (
-                      <label 
-                        key={option} 
-                        className={`chat-poll-option ${selectedPoll === option ? "selected" : ""}`}
-                      >
-                        <input 
-                          type="radio" 
-                          name="poll-option" 
-                          value={option}
-                          checked={selectedPoll === option}
-                          onChange={() => {
-                            setSelectedPoll(option);
-                            toast.success(`Voted for ${option}! 🗳️`);
-                          }}
-                        />
-                        <span>{option}</span>
-                      </label>
-                    ))}
+              ) : (
+                <>
+                  {/* Members row */}
+                  <div className="chat-members-row">
+                    {activeConv.participants?.map((p) => {
+                      const imgSrc = resolveImg(p.profile_image_url);
+                      return (
+                        <div key={p.user_id} className="chat-member-avatar-wrapper" title={`${p.name} (${p.role_code})`}>
+                          {imgSrc ? (
+                            <img src={imgSrc} alt={p.name} className="chat-member-avatar" />
+                          ) : (
+                            <AvatarPlaceholder name={p.name} size={36} />
+                          )}
+                          <span className="member-role-badge">{p.role_code}</span>
+                        </div>
+                      );
+                    })}
                   </div>
-                </div>
-              </div>
 
+                  {/* Messages scroll */}
+                  <div className="chat-messages-scroll">
+                    {loadingMsgs ? (
+                      <div className="chat-empty-feed">
+                        <Loader2 size={28} className="spin-icon" />
+                        <p>جاري تحميل الرسائل...</p>
+                      </div>
+                    ) : messages.length === 0 ? (
+                      <div className="chat-empty-feed">
+                        <MessageSquare size={40} opacity={0.25} />
+                        <p>لا توجد رسائل بعد. ابدأ المحادثة! 👋</p>
+                      </div>
+                    ) : (
+                      messages.map((msg) => {
+                        const mine = isMyMessage(msg);
+                        const senderName = msg.sender_name || msg.name || "مستخدم";
+                        const imgSrc = resolveImg(msg.profile_image_url || msg.avatar);
+                        return (
+                          <div
+                            key={msg.id}
+                            className={`chat-message-row ${mine ? "doctor-right" : "student-left"}`}
+                          >
+                            {!mine && (
+                              imgSrc
+                                ? <img src={imgSrc} alt={senderName} className="chat-msg-avatar" />
+                                : <AvatarPlaceholder name={senderName} size={34} />
+                            )}
+                            <div className="chat-msg-bubble-wrap">
+                              {!mine && (
+                                <span className="chat-msg-sender-meta">
+                                  {senderName}
+                                  {msg.role_code && <span className="chat-msg-role"> {msg.role_code}</span>}
+                                </span>
+                              )}
+                              <div className="chat-msg-bubble">
+                                <p>{msg.message || msg.text}</p>
+                                <div className="chat-msg-time-status">
+                                  <span>{formatTime(msg.created_at || msg.time)}</span>
+                                  {mine && <CheckCheck size={13} className="chat-double-check" />}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                    <div ref={messagesEndRef} />
+                  </div>
+
+                  {/* Input bar */}
+                  <form onSubmit={handleSendMessage} className="chat-input-bar">
+                    <button type="button" className="chat-attach-btn" onClick={() => toast.success("المرفقات قادمة قريباً!")}>
+                      <Plus size={20} />
+                    </button>
+                    <input
+                      type="text"
+                      placeholder="اكتب رسالتك هنا..."
+                      value={messageInput}
+                      onChange={(e) => setMessageInput(e.target.value)}
+                      className="chat-input-field"
+                      disabled={sendingMsg}
+                    />
+                    <button type="submit" className="chat-send-btn" disabled={sendingMsg || !messageInput.trim()}>
+                      {sendingMsg ? <Loader2 size={16} className="spin-icon" /> : <Send size={16} />}
+                    </button>
+                  </form>
+                </>
+              )}
+            </div>
+
+            {/* ── RIGHT SIDEBAR: Members detail ── */}
+            <div className="chat-right-sidebar">
+              <div className="chat-right-card">
+                <h3>
+                  <Users size={15} style={{ marginRight: 6 }} />
+                  أعضاء الفريق
+                </h3>
+                {!activeConv ? (
+                  <p className="chat-empty-subtext">اختر محادثة أولاً</p>
+                ) : (
+                  <div className="chat-members-detail-list">
+                    {activeConv.participants?.map((p) => {
+                      const imgSrc = resolveImg(p.profile_image_url);
+                      return (
+                        <div key={p.user_id} className="chat-member-detail-row">
+                          <div className="cmd-avatar">
+                            {imgSrc
+                              ? <img src={imgSrc} alt={p.name} />
+                              : <AvatarPlaceholder name={p.name} size={36} />
+                            }
+                          </div>
+                          <div className="cmd-info">
+                            <span className="cmd-name">{p.name}</span>
+                            <span className={`cmd-badge role-${p.role_code?.toLowerCase()}`}>{p.role_code}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
 
           </div>
