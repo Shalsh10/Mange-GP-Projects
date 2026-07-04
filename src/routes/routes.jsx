@@ -33,6 +33,7 @@ import Login from "../Pages/auth/Login";
 import EditStudentProfile from "../Pages/EditStudentProfile";
 import ProtectedRoute from "../Components/ProtectedRoute";
 import AllDiscussion from "../Pages/AllDiscussion";
+import CommunityChat from "../Pages/CommunityChat";
 import RequestsPageNotInTeam from "../Pages/RequestsPageNotInTeam";
 import PoliciesPage from "../Pages/PoliciesPage";
 import TimelinePage from "../Pages/TimelinePage";
@@ -67,6 +68,7 @@ export const router = createBrowserRouter([
   { path: "/suggested-projects", element: <SuggestedProjects /> },
   { path: "/final-discussions", element: <FinalDiscussion /> },
   { path: "/all-discussions", element: <AllDiscussion /> },
+  { path: "/chat", element: <CommunityChat /> },
   { path: "/StudentsManagement", element: <StudentsManagement /> },
   { path: "/join-requests", element: <JoinRequests /> },
   { path: "/library", element: <ProjectsPage /> },

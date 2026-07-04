@@ -337,7 +337,7 @@ export default function Supervising() {
     toast.success(`Opening chat with Team ${teamId}... 💬`, { id: `chat-${teamId}` });
     // Navigate to community chat
     setTimeout(() => {
-      navigate("/all-discussions");
+      navigate("/chat");
     }, 800);
   };
 
@@ -484,7 +484,11 @@ export default function Supervising() {
             filteredTeams.map((team) => (
               <div key={`${team.team_id}-${team.title}`} className="sv-card">
                 {/* Image and status badge on left */}
-                <div className="sv-card-left">
+                <div
+                  className="sv-card-left"
+                  style={{ cursor: "pointer" }}
+                  onClick={() => navigate(`/doctor/project-details?teamId=${team.team_id}&type=supervised`)}
+                >
                   <img src={team.image} alt={team.title} className="sv-card-image" />
                   <div
                     className="sv-card-badge"
@@ -499,7 +503,13 @@ export default function Supervising() {
 
                 {/* Details middle */}
                 <div className="sv-card-middle">
-                  <h2 className="sv-card-title">{team.title}</h2>
+                  <h2
+                    className="sv-card-title"
+                    style={{ cursor: "pointer" }}
+                    onClick={() => navigate(`/doctor/project-details?teamId=${team.team_id}&type=supervised`)}
+                  >
+                    {team.title}
+                  </h2>
                   <p className="sv-card-desc">"{team.description}"</p>
                   
                   <div className="sv-card-tags-row">

@@ -103,6 +103,8 @@ export default function Sidebar() {
 
 function SidebarItem({ icon, label, to, end }) {
   const location = useLocation();
+  const params = new URLSearchParams(location.search);
+  const selectedTeamId = params.get("teamId") || "A";
 
   const checkActive = (isActive) => {
     if (isActive) return true;
@@ -112,16 +114,76 @@ function SidebarItem({ icon, label, to, end }) {
     return false;
   };
 
+  const isChatActive = label === "Community Chat" && location.pathname.startsWith("/chat");
+
+  const chatTeams = [
+    { id: "A", name: "Team A", unread: 0 },
+    { id: "B", name: "Team B", unread: 28 },
+    { id: "C", name: "Team C", unread: 0 },
+    { id: "D", name: "Team D", unread: 0 },
+    { id: "E", name: "Team E", unread: 32 },
+  ];
+
   return (
-    <NavLink
-      to={to}
-      end={end}
-      className={({ isActive }) =>
-        `doctor-sidebar-link${checkActive(isActive) ? " active" : ""}`
-      }
-    >
-      <span className="doctor-sidebar-icon">{icon}</span>
-      <span className="doctor-sidebar-label">{label}</span>
-    </NavLink>
+    <div style={{ display: "flex", flexDirection: "column" }}>
+      <NavLink
+        to={to}
+        end={end}
+        className={({ isActive }) =>
+          `doctor-sidebar-link${checkActive(isActive) ? " active" : ""}`
+        }
+      >
+        <span className="doctor-sidebar-icon">{icon}</span>
+        <span className="doctor-sidebar-label">{label}</span>
+      </NavLink>
+      
+      {isChatActive && (
+        <div className="doctor-sidebar-submenu" style={{ display: "flex", flexDirection: "column", paddingLeft: "40px", gap: "2px", margin: "4px 0" }}>
+          {chatTeams.map(t => {
+            const isActiveTeam = selectedTeamId === t.id;
+            return (
+              <NavLink
+                key={t.id}
+                to={`/chat?teamId=${t.id}`}
+                className="doctor-sidebar-sublink"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "8px 16px 8px 12px",
+                  color: isActiveTeam ? "#ffffff" : "#cbd5e1",
+                  background: isActiveTeam ? "rgba(255, 255, 255, 0.15)" : "transparent",
+                  textDecoration: "none",
+                  fontSize: "13px",
+                  fontWeight: isActiveTeam ? "600" : "400",
+                  borderRadius: "4px 0 0 4px",
+                  transition: "all 0.15s ease"
+                }}
+              >
+                <span>{t.name}</span>
+                {t.unread > 0 && (
+                  <span style={{
+                    background: "#ef4444",
+                    color: "#ffffff",
+                    fontSize: "9px",
+                    fontWeight: "700",
+                    minWidth: "16px",
+                    height: "16px",
+                    borderRadius: "8px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: "0 4px",
+                    boxSizing: "border-box"
+                  }}>
+                    {t.unread}
+                  </span>
+                )}
+              </NavLink>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }

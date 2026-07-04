@@ -313,23 +313,20 @@ const generateCalendarGrid = (year, month) => {
   return grid;
 };
 
-const timeOptions = [
-  "09:00 AM",
-  "09:30 AM",
-  "10:00 AM",
-  "10:30 AM",
-  "11:00 AM",
-  "11:30 AM",
-  "12:00 PM",
-  "12:30 PM",
-  "01:00 PM",
-  "01:30 PM",
-  "02:00 PM",
-  "02:30 PM",
-  "03:00 PM",
-  "03:30 PM",
-  "04:00 PM",
-];
+const generate24hTimeOptions = () => {
+  const options = [];
+  for (let hour = 0; hour < 24; hour++) {
+    for (let min of ["00", "30"]) {
+      const ampm = hour >= 12 ? "PM" : "AM";
+      let displayHour = hour % 12;
+      if (displayHour === 0) displayHour = 12;
+      const hourStr = String(displayHour).padStart(2, "0");
+      options.push(`${hourStr}:${min} ${ampm}`);
+    }
+  }
+  return options;
+};
+const timeOptions = generate24hTimeOptions();
 
 export default function NewMeetingModal({ teamId, teamName, onClose, onSet }) {
   const [currentMonth, setCurrentMonth] = useState(2); // March (2)

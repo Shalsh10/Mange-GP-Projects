@@ -1,4 +1,4 @@
-const BASE_URL = 'https://mango-attendant-handyman.ngrok-free.dev/api';
+const BASE_URL = '/api';
 export const customFetch = async (endpoint, options = {}) => {
   const token = localStorage.getItem("token");
 

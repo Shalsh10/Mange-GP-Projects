@@ -765,6 +765,9 @@ export default function ProjectDashboard() {
   const [allowableMilestones, setAllowableMilestones] = useState([]);
   const [gradeVal, setGradeVal] = useState("");
   const [selectedMilestone, setSelectedMilestone] = useState("Choose milestone");
+  const [availableCourses, setAvailableCourses] = useState([]);
+  const [selectedCourseId, setSelectedCourseId] = useState("");
+  const [rawCourses, setRawCourses] = useState([]);
   
   const [showAnnouncement, setShowAnnouncement] = useState(false);
   const [showNewMeeting, setShowNewMeeting] = useState(false);
@@ -869,27 +872,29 @@ export default function ProjectDashboard() {
         // Set raw milestones for fallback checks
         setRawMilestones(extractedMilestones);
 
-        // Fetch allowable milestones
-        try {
-          const allowable = await SupervisorService.getAllowableMilestones(teamId);
-          const list = allowable?.data || allowable || [];
-          setAllowableMilestones(Array.isArray(list) ? list : []);
-          if (Array.isArray(list) && list.length > 0) {
-            setSelectedMilestone(list[0].title || list[0].name || list[0].milestone || "Choose milestone");
-          } else {
+        // Fetch allowable milestones only in committee view
+        if (type === "committee") {
+          try {
+            const allowable = await SupervisorService.getAllowableMilestones(teamId);
+            const list = allowable?.data || allowable || [];
+            setAllowableMilestones(Array.isArray(list) ? list : []);
+            if (Array.isArray(list) && list.length > 0) {
+              setSelectedMilestone(list[0].title || list[0].name || list[0].milestone || "Choose milestone");
+            } else {
+              const localMilestones = extractedMilestones.filter(m => m.status !== "Locked").map(m => ({
+                id: m.id || "2",
+                title: m.milestone
+              }));
+              setAllowableMilestones(localMilestones);
+            }
+          } catch (allowableErr) {
+            console.warn("Failed fetching allowable milestones:", allowableErr);
             const localMilestones = extractedMilestones.filter(m => m.status !== "Locked").map(m => ({
               id: m.id || "2",
               title: m.milestone
             }));
             setAllowableMilestones(localMilestones);
           }
-        } catch (allowableErr) {
-          console.warn("Failed fetching allowable milestones:", allowableErr);
-          const localMilestones = extractedMilestones.filter(m => m.status !== "Locked").map(m => ({
-            id: m.id || "2",
-            title: m.milestone
-          }));
-          setAllowableMilestones(localMilestones);
         }
 
         // 2. Fetch submitted files
@@ -950,14 +955,47 @@ export default function ProjectDashboard() {
           maxSupervisorScore: data.max_supervisor_score ?? 40
         });
 
-        let existingGrade = "";
-        if (Array.isArray(data.courses)) {
-          const matchedCourse = data.courses.find(c => String(c.project_course?.id) === String(teamObj.project_course_id || "2"));
-          if (matchedCourse && matchedCourse.supervisor_grade) {
-            existingGrade = parseFloat(matchedCourse.supervisor_grade.grade).toString();
+        setRawCourses(data.courses || []);
+
+        if (type === "supervised") {
+          try {
+            const courseRes = await SupervisorService.getAvailableCourses(teamObj.id || teamId);
+            const courseDataObj = courseRes?.data || courseRes || {};
+            const courses = courseDataObj.available_courses || [];
+            setAvailableCourses(courses);
+            if (courses.length > 0) {
+              const defaultCourseId = String(courses[0].id);
+              setSelectedCourseId(defaultCourseId);
+              
+              let existingGrade = "";
+              if (Array.isArray(data.courses)) {
+                const matchedCourse = data.courses.find(c => String(c.project_course?.id) === defaultCourseId);
+                if (matchedCourse && matchedCourse.supervisor_grade) {
+                  existingGrade = parseFloat(matchedCourse.supervisor_grade.grade).toString();
+                }
+              }
+              setGradeVal(existingGrade);
+            }
+          } catch (courseErr) {
+            console.warn("Failed fetching available courses:", courseErr);
           }
+        } else {
+          let existingGrade = "";
+          const defaultMilestone = selectedMilestone && selectedMilestone !== "Choose milestone" 
+            ? selectedMilestone 
+            : (allowableMilestones[0]?.title || allowableMilestones[0]?.name || allowableMilestones[0]?.milestone || "");
+          
+          if (defaultMilestone) {
+            const matchedMilestone = extractedMilestones.find(m => 
+              String(m.milestone || "").toLowerCase().trim() === String(defaultMilestone).toLowerCase().trim() ||
+              String(m.title || "").toLowerCase().trim() === String(defaultMilestone).toLowerCase().trim()
+            );
+            if (matchedMilestone && matchedMilestone.grade && !matchedMilestone.grade.includes("Add")) {
+              existingGrade = matchedMilestone.grade.split("/")[0];
+            }
+          }
+          setGradeVal(existingGrade);
         }
-        setGradeVal(existingGrade);
       }
     } catch (err) {
       console.error("Error loading team details:", err);
@@ -1014,7 +1052,10 @@ export default function ProjectDashboard() {
 
   // Submit Milestone Grade
   const handleSubmitGrade = async () => {
-    if (!selectedMilestone || selectedMilestone === "Choose milestone") {
+    const params = new URLSearchParams(location.search);
+    const type = params.get("type") || "supervised";
+
+    if (type === "committee" && (!selectedMilestone || selectedMilestone === "Choose milestone")) {
       toast.error("Please choose a milestone first");
       return;
     }
@@ -1055,26 +1096,18 @@ export default function ProjectDashboard() {
       } else {
         const formData = new FormData();
         formData.append("team_id", teamDbId);
-        formData.append("project_course_id", projectCourseId || "2");
+        formData.append("project_course_id", selectedCourseId || projectCourseId || "2");
         formData.append("grade", gradeVal);
 
         await SupervisorService.gradeTeam(formData);
       }
       
       toast.success("Grade submitted successfully! 🎓");
-      loadData();
+      await loadData();
+      setGradeVal("");
     } catch (err) {
-      console.warn("Failed API submit grade, using mock success. Error:", err);
-      toast.success("Grade submitted successfully! 🎓 (Mock)");
-      setTeamDetails((prev) => {
-        const updatedMilestones = prev.milestones.map((m) => {
-          if (m.milestone === selectedMilestone) {
-            return { ...m, grade: `${gradeVal}/${maxScoreDenom}`, status: "Completed" };
-          }
-          return m;
-        });
-        return { ...prev, milestones: updatedMilestones };
-      });
+      console.error("Failed API submit grade:", err);
+      toast.error(err.message || "Failed to submit grade. Please try again.");
     } finally {
       setGradingLoading(false);
     }
@@ -1092,9 +1125,11 @@ export default function ProjectDashboard() {
   ) || teamDetails.milestones?.[0] || { milestone: "None", deadline: "TBD" };
 
   const params = new URLSearchParams(location.search);
+  const type = params.get("type") || "supervised";
   const selectedMilestoneObj = teamDetails.milestones?.find(m => (m.milestone === selectedMilestone || m.title === selectedMilestone));
-  const maxScoreDenom = params.get("type") === "supervised"
-    ? (teamDetails.maxSupervisorScore || 40)
+  const selectedCourseObj = rawCourses.find(c => String(c.project_course?.id) === String(selectedCourseId));
+  const maxScoreDenom = type === "supervised"
+    ? (selectedCourseObj?.project_course?.max_supervisor_score || selectedCourseObj?.max_supervisor_score || teamDetails.maxSupervisorScore || 40)
     : (selectedMilestoneObj?.max_score ? parseFloat(selectedMilestoneObj.max_score) : 20);
 
   return (
@@ -1356,9 +1391,63 @@ export default function ProjectDashboard() {
             ref={gradeCardRef}
             className={`pd-card ${gradeHighlight ? "pd-card-highlight" : ""}`}
           >
-            <h2 className="pd-grade-milestone-title">Grade Team</h2>
+            <h2 className="pd-grade-milestone-title">
+              {type === "committee" ? "Grade Milestone" : "Grade Team"}
+            </h2>
 
+            {type === "committee" && (
+              <div className="pd-grade-field">
+                <select
+                  value={selectedMilestone}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setSelectedMilestone(val);
+                    const foundObj = teamDetails.milestones?.find(m => (m.milestone === val || m.title === val));
+                    if (foundObj && foundObj.grade && !foundObj.grade.includes("Add")) {
+                      setGradeVal(foundObj.grade.split("/")[0]);
+                    } else {
+                      setGradeVal("");
+                    }
+                  }}
+                  className="pd-grade-select"
+                  disabled={gradingLoading}
+                >
+                  <option value="Choose milestone" disabled>Choose milestone</option>
+                  {allowableMilestones.map((m) => (
+                    <option key={m.id} value={m.title || m.name || m.milestone}>
+                      {m.title || m.name || m.milestone}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
+            {type === "supervised" && (
+              <div className="pd-grade-field">
+                <select
+                  value={selectedCourseId}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setSelectedCourseId(val);
+                    const matchedCourse = rawCourses.find(c => String(c.project_course?.id) === String(val));
+                    if (matchedCourse && matchedCourse.supervisor_grade) {
+                      setGradeVal(parseFloat(matchedCourse.supervisor_grade.grade).toString());
+                    } else {
+                      setGradeVal("");
+                    }
+                  }}
+                  className="pd-grade-select"
+                  disabled={gradingLoading}
+                >
+                  <option value="" disabled>Choose Capstone course</option>
+                  {availableCourses.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name || `Capstone Project ${c.order || ""}`}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             <div className="pd-grade-input-row">
               <span>Grade</span>
@@ -1374,7 +1463,7 @@ export default function ProjectDashboard() {
               </div>
             </div>
 
-            <button className="pd-grade-btn" onClick={handleSubmitGrade} disabled={gradingLoading}>
+            <button className="pd-grade-btn" style={{ margin: "0 auto" }} onClick={handleSubmitGrade} disabled={gradingLoading}>
               {gradingLoading ? "Submitting..." : "Submit Grade"}
             </button>
           </article>

@@ -11,9 +11,7 @@ const token = {
 };
 
 function getBaseUrl() {
-  const server = settings.backendServer || "";
-  const trimmed = server.endsWith("/") ? server : `${server}/`;
-  return `${trimmed}api`;
+  return '/api';
 }
 
 function extractResponseData(res) {

@@ -167,18 +167,25 @@ export default function MilestonesSetup() {
       const data = response?.data?.data || response?.data || response || [];
       
       if (Array.isArray(data) && data.length > 0) {
-        const formatted = data.map(m => ({
-          id: m.id || m.milestone_id || Date.now(),
-          phase: m.phase || m.order || 1,
-          title: m.title || "Untitled Milestone",
-          status: m.status || "Pending",
-          marks: m.marks || 5,
-          deadline: m.deadline || m.due_date || "TBD",
-          isOverdue: String(m.status).toLowerCase() === "overdue" || m.is_overdue,
-          reqs: m.requirements || ["Requirement details"],
-          teamsSubmittedCount: m.teams_submitted_count || 0,
-          teamsData: []
-        }));
+        const formatted = data.map(m => {
+          const isOverdue = activeTab === "Overdue" || String(m.status).toLowerCase() === "overdue" || m.is_overdue;
+          let status = m.status || "Pending";
+          if (activeTab === "On Progress") status = "On Progress";
+          else if (activeTab === "Completed") status = "Completed";
+          else if (activeTab === "Pending") status = "Pending";
+          return {
+            id: m.id || m.milestone_id || Date.now(),
+            phase: m.phase || m.order || 1,
+            title: m.title || m.name || "Untitled Milestone",
+            status,
+            marks: m.marks || m.mark || m.max_marks || m.max_score || 5,
+            deadline: m.deadline || m.due_date || "TBD",
+            isOverdue,
+            reqs: m.requirements || ["Requirement details"],
+            teamsSubmittedCount: m.teams_submitted_count || 0,
+            teamsData: []
+          };
+        });
         setMilestones(formatted);
       } else {
         setMilestones(FALLBACK_MILESTONES);
@@ -203,20 +210,37 @@ export default function MilestonesSetup() {
     }
     setExpandedMsTableId(milestoneId);
 
+    const currentMilestone = milestones.find(m => m.id === milestoneId);
+    const maxMarks = currentMilestone?.marks || 20;
+
     try {
       const response = await Milestones.getTeamsInMilestone(milestoneId, viewAs, activeTab === "Overdue" ? "late" : "");
       const data = response?.data?.data || response?.data || response || [];
       
       if (Array.isArray(data) && data.length > 0) {
-        const formattedTeams = data.map(t => ({
-          id: t.team_id || t.id,
-          name: t.team_name || t.name || "Unknown Team",
-          status: t.status || "Not Yet",
-          date: t.submission_date || t.date || "——",
-          action: t.status === "Submitted" || t.status === "On Time" ? "View" : "Remind",
-          grade: t.grade !== null && t.grade !== undefined ? `${t.grade}/20` : "Add Grade / 20",
-          daysLate: t.days_late || "5 Days"
-        }));
+        const formattedTeams = data.map(t => {
+          let gradeVal = "Add Grade / " + maxMarks;
+          if (t.grade !== null && t.grade !== undefined && t.grade !== "") {
+            const gradeStr = String(t.grade);
+            if (gradeStr.includes("/")) {
+              const parts = gradeStr.split("/");
+              const num = parts[0].trim();
+              const den = parts[1]?.trim();
+              gradeVal = den === "20" && String(maxMarks) !== "20" ? `${num}/${maxMarks}` : gradeStr;
+            } else {
+              gradeVal = `${gradeStr}/${maxMarks}`;
+            }
+          }
+          return {
+            id: t.team_id || t.id,
+            name: t.team_name || t.name || "Unknown Team",
+            status: t.status || "Not Yet",
+            date: t.submission_date || t.date || "——",
+            action: t.status === "Submitted" || t.status === "On Time" ? "View" : "Remind",
+            grade: gradeVal,
+            daysLate: t.days_late || "5 Days"
+          };
+        });
         setMilestones(prev => prev.map(m => m.id === milestoneId ? { ...m, teamsData: formattedTeams } : m));
       } else {
         const targetMs = FALLBACK_MILESTONES.find(fm => fm.id === milestoneId);
@@ -251,13 +275,16 @@ export default function MilestonesSetup() {
 
   // Grade team dynamically via API
   const handleGradeTeam = async (milestoneId, teamId, currentGrade) => {
+    const currentMilestone = milestones.find(m => m.id === milestoneId);
+    const maxMarks = currentMilestone?.marks || 20;
+
     const currentVal = currentGrade.includes("Add") ? "" : currentGrade.split("/")[0];
-    const newGrade = prompt(`Enter grade for this team (out of 20):`, currentVal);
+    const newGrade = prompt(`Enter grade for this team (out of ${maxMarks}):`, currentVal);
     if (newGrade === null || newGrade === undefined) return;
     
     const parsed = parseFloat(newGrade);
-    if (isNaN(parsed) || parsed < 0 || parsed > 20) {
-      alert("Please enter a valid numeric grade between 0 and 20.");
+    if (isNaN(parsed) || parsed < 0 || parsed > maxMarks) {
+      alert(`Please enter a valid numeric grade between 0 and ${maxMarks}.`);
       return;
     }
 
@@ -271,7 +298,7 @@ export default function MilestonesSetup() {
         if (m.id === milestoneId) {
           return {
             ...m,
-            teamsData: m.teamsData.map(t => t.id === teamId ? { ...t, grade: `${parsed}/20` } : t)
+            teamsData: m.teamsData.map(t => t.id === teamId ? { ...t, grade: `${parsed}/${maxMarks}` } : t)
           };
         }
         return m;
@@ -284,7 +311,7 @@ export default function MilestonesSetup() {
         if (m.id === milestoneId) {
           return {
             ...m,
-            teamsData: m.teamsData.map(t => t.id === teamId ? { ...t, grade: `${parsed}/20` } : t)
+            teamsData: m.teamsData.map(t => t.id === teamId ? { ...t, grade: `${parsed}/${maxMarks}` } : t)
           };
         }
         return m;
@@ -992,18 +1019,18 @@ export default function MilestonesSetup() {
                                             onClick={() => handleGradeTeam(m.id, team.id, team.grade)}
                                             style={{ color: "#0066FF", fontWeight: "bold", cursor: "pointer" }}
                                           >
-                                            Add Grade <span style={{ color: "#6b7280", fontWeight: 500 }}>/ 20</span>
+                                            Add Grade <span style={{ color: "#6b7280", fontWeight: 500 }}>/ {m.marks}</span>
                                           </span>
                                         ) : (
                                           <span 
                                             onClick={() => handleGradeTeam(m.id, team.id, team.grade)}
                                             style={{
-                                              color: parseInt(team.grade.split("/")[0]) > 10 ? "#10b981" : "#ef4444",
+                                              color: parseFloat(team.grade.split("/")[0]) >= (m.marks / 2) ? "#10b981" : "#ef4444",
                                               fontWeight: "bold",
                                               cursor: "pointer"
                                             }}
                                           >
-                                            {team.grade.split("/")[0]}<span style={{ color: "#6b7280", fontWeight: 500 }}>/20</span>
+                                            {team.grade.split("/")[0]}<span style={{ color: "#6b7280", fontWeight: 500 }}>/{m.marks}</span>
                                           </span>
                                         )}
                                       </td>

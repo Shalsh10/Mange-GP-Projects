@@ -40,6 +40,7 @@ export const SupervisorService = {
   viewSupervisedTeam: (teamId) => submitRequestAsync(`supervisor/teams/${teamId}`, "GET"),
   getSupervisedTeamsList: () => submitRequestAsync("supervisor/teams_list", "GET"),
   gradeTeam: (data) => submitRequestAsync("doctor/team/grade", "POST", data),
+  getAvailableCourses: (teamId) => submitRequestAsync(`doctor/team/${teamId}/available-courses`, 'GET'),
 
   // --- Milestone Management ---
   getMilestonesWithTabs: () => submitRequestAsync('supervisor/milestones/tabs', 'GET'),

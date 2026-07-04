@@ -1087,7 +1087,11 @@ export default function ProjectsManagedTeams() {
         }
       }
 
-      setAllTeams(uniqueTeams);
+      if (uniqueTeams.length === 0) {
+        setAllTeams(defaultProjects);
+      } else {
+        setAllTeams(uniqueTeams);
+      }
 
       // Map sidebar items directly if provided by API
       if (committeeDataObj) {
@@ -1121,6 +1125,7 @@ export default function ProjectsManagedTeams() {
 
     } catch (e) {
       console.warn("Failed fetching teams from API:", e);
+      setAllTeams(defaultProjects);
     }
   };
 
@@ -1482,7 +1487,11 @@ export default function ProjectsManagedTeams() {
               filteredProjects.map((project) => (
                 <div key={project.team_id} className="pmt-card">
                   {/* Image and side-badge */}
-                  <div className="pmt-card-left">
+                  <div
+                    className="pmt-card-left"
+                    style={{ cursor: "pointer" }}
+                    onClick={() => navigate(`/doctor/project-details?teamId=${project.team_id}&type=${project.type || 'supervised'}`)}
+                  >
                     <img src={project.image} alt={project.title} className="pmt-card-image" />
                     <div
                       className="pmt-card-badge"
@@ -1559,7 +1568,15 @@ export default function ProjectsManagedTeams() {
 
                   {/* Vertical actions */}
                   <div className="pmt-card-actions">
-                    <button className="pmt-action-btn">
+                    <button
+                      className="pmt-action-btn"
+                      onClick={() => {
+                        toast.success(`Opening Chat for Team ${project.team_id}... 💬`, { id: `chat-${project.team_id}` });
+                        setTimeout(() => {
+                          navigate("/chat");
+                        }, 800);
+                      }}
+                    >
                       <MessageSquare size={13} strokeWidth={2.4} />
                       <span>Message</span>
                     </button>

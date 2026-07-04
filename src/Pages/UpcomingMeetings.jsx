@@ -13,6 +13,21 @@ import {
 } from "lucide-react";
 import "./UpcomingMeetings.css";
 
+const generate24hTimeOptions = () => {
+  const options = [];
+  for (let hour = 0; hour < 24; hour++) {
+    for (let min of ["00", "30"]) {
+      const ampm = hour >= 12 ? "PM" : "AM";
+      let displayHour = hour % 12;
+      if (displayHour === 0) displayHour = 12;
+      const hourStr = String(displayHour).padStart(2, "0");
+      options.push(`${hourStr}:${min} ${ampm}`);
+    }
+  }
+  return options;
+};
+const timeOptions = generate24hTimeOptions();
+
 // ─── New Meeting Modal ───────────────────────────────────────────────────────
 function NewMeetingModal({ teams, onClose, onSuccess }) {
   const today = new Date();
@@ -189,7 +204,7 @@ function NewMeetingModal({ teams, onClose, onSuccess }) {
               value={time}
               onChange={(e) => setTime(e.target.value)}
             >
-              {["08:00 AM","09:00 AM","10:00 AM","11:00 AM","12:00 PM","01:00 PM","02:00 PM","03:00 PM","04:00 PM","05:00 PM"].map(t=>(
+              {timeOptions.map(t=>(
                 <option key={t} value={t}>{t}</option>
               ))}
             </select>

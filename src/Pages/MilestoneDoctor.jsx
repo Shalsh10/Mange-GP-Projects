@@ -15,8 +15,10 @@ import {
 } from "react-icons/fa";
 import { useAcademicYear } from "../context/Academicyearcontext";
 import Milestones from "../Services/MilestonEs.model";
+import { SupervisorService } from "../Services/SupervisorServices";
 import logo from "../assets/logo2.png";
 import Sidebar from "../Components/Sidebar";
+
 
 // Mock Fallback Milestones matching the exact dataset, status, and layout from the mockup screens
 const FALLBACK_MILESTONES = [
@@ -292,11 +294,21 @@ const normalizeRequirements = (requirements) => {
   return normalized.length ? normalized : ["Requirement details"];
 };
 
-const formatGrade = (grade) => {
-  if (grade === undefined || grade === null || grade === "") return "Add Grade / 20";
+const formatGrade = (grade, maxMarks = 20) => {
+  if (grade === undefined || grade === null || grade === "") return `Add Grade / ${maxMarks}`;
   const text = String(grade);
-  return text.includes("/") || text.toLowerCase().includes("add") ? text : `${text}/20`;
+  if (text.includes("/")) {
+    const parts = text.split("/");
+    const numerator = parts[0].trim();
+    const denominator = parts[1]?.trim();
+    if (denominator === "20" && String(maxMarks) !== "20") {
+      return `${numerator}/${maxMarks}`;
+    }
+    return text;
+  }
+  return text.toLowerCase().includes("add") ? text : `${text}/${maxMarks}`;
 };
+
 
 const formatDaysLate = (value) => {
   if (value === undefined || value === null || value === "") return "Late";
@@ -376,7 +388,7 @@ const normalizeTeamStatus = (team) => {
   return firstFilled(team.status, team.submission_status, "Not Yet");
 };
 
-const normalizeTeam = (team) => {
+const normalizeTeam = (team, maxMarks = 20) => {
   const status = normalizeTeamStatus(team);
   const daysLate = firstFilled(team.days_late, team.late_days, team.delay_days);
   const nestedTeam = firstFilled(
@@ -424,7 +436,7 @@ const normalizeTeam = (team) => {
     status,
     date: firstFilled(team.submission_date, team.submitted_at, team.date, "--"),
     action: status === "Submitted" || status === "On Time" ? "View" : "Remind",
-    grade: formatGrade(firstFilled(team.grade, team.milestone_grade, team.score)),
+    grade: formatGrade(firstFilled(team.grade, team.milestone_grade, team.score), maxMarks),
     daysLate: formatDaysLate(firstFilled(daysLate, team.daysLate)),
   };
 };
@@ -500,6 +512,31 @@ export default function MilestonesSetup() {
   const [tabCounts, setTabCounts] = useState(null);
   const [loading, setLoading] = useState(true);
   const [notesState, setNotesState] = useState({}); // Stores the note value of milestone inputs
+  const [doctorTeamsCount, setDoctorTeamsCount] = useState(null);
+
+  // Fetch the count of doctor's managed teams (either supervised or in committee)
+  useEffect(() => {
+    const fetchDoctorTeamsCount = async () => {
+      try {
+        let count = 0;
+        if (viewAs === "supervisor") {
+          const res = await SupervisorService.getSupervisedTeams();
+          const fetched = getArrayFromResponse(res, ["projects", "teams"]);
+          count = fetched.length;
+        } else {
+          const res = await SupervisorService.getAllMilestoneTeams();
+          const fetched = getArrayFromResponse(res, ["projects", "teams"]);
+          count = fetched.length;
+        }
+        if (count > 0) {
+          setDoctorTeamsCount(count);
+        }
+      } catch (err) {
+        console.warn("Failed to fetch doctor teams count:", err);
+      }
+    };
+    fetchDoctorTeamsCount();
+  }, [viewAs]);
 
   useEffect(() => {
     const fetchMilestones = async () => {
@@ -509,7 +546,22 @@ export default function MilestonesSetup() {
 
         const response = await Milestones.getMilestonesWithTabs(viewAs, activeTab);
         const list = getArrayFromResponse(response, ["milestones"]);
-        const formatted = list.map((item, index) => normalizeMilestone(item, index));
+        const formatted = list.map((item, index) => {
+          const normalized = normalizeMilestone(item, index);
+          if (activeTab === "Overdue") {
+            normalized.isOverdue = true;
+          } else if (activeTab === "On Progress") {
+            normalized.status = "On Progress";
+            normalized.isOverdue = false;
+          } else if (activeTab === "Completed") {
+            normalized.status = "Completed";
+            normalized.isOverdue = false;
+          } else if (activeTab === "Pending") {
+            normalized.status = "Pending";
+            normalized.isOverdue = false;
+          }
+          return normalized;
+        });
 
         setTabCounts(getTabsFromResponse(response));
         setMilestones(formatted);
@@ -525,6 +577,18 @@ export default function MilestonesSetup() {
     fetchMilestones();
   }, [viewAs, activeTab]);
 
+  const getTeamsStats = (m) => {
+    const total = m.teamsData && m.teamsData.length > 0
+      ? m.teamsData.length
+      : (doctorTeamsCount || m.teamsTotalCount || 3);
+
+    const submitted = m.teamsData && m.teamsData.length > 0
+      ? m.teamsData.filter(t => t.status === "Submitted" || t.status === "On Time").length
+      : m.teamsSubmittedCount;
+
+    return { submitted, total };
+  };
+
   // Handle toggling the team submissions table expansion via API.
   const handleToggleTable = async (milestoneId) => {
     if (expandedMsTableId === milestoneId) {
@@ -533,20 +597,23 @@ export default function MilestonesSetup() {
     }
     setExpandedMsTableId(milestoneId);
 
+    const currentMilestone = milestones.find(m => m.id === milestoneId);
+    const maxMarks = currentMilestone?.marks || 20;
+
     try {
       const response = await Milestones.getTeamsInMilestone(
         milestoneId,
         viewAs,
         activeTab === "Overdue" ? "late" : ""
       );
-      const teams = getArrayFromResponse(response, ["teams"]).map(normalizeTeam);
+      const teams = getArrayFromResponse(response, ["teams"]).map(t => normalizeTeam(t, maxMarks));
 
       setMilestones(prev => prev.map(m => m.id === milestoneId ? { ...m, teamsData: teams } : m));
     } catch (err) {
       console.error("Error fetching teams list, falling back to mock:", err);
       const targetMs = getRestoredFallback().find(fm => String(fm.id) === String(milestoneId));
       if (targetMs) {
-        const teams = (targetMs.teamsData || []).map(normalizeTeam);
+        const teams = (targetMs.teamsData || []).map(t => normalizeTeam(t, maxMarks));
         setMilestones(prev => prev.map(m => m.id === milestoneId ? { ...m, teamsData: teams } : m));
       }
     }
@@ -573,6 +640,7 @@ export default function MilestonesSetup() {
 
     const teamId = team.id;
     const currentGrade = team.grade;
+    const maxMarks = milestone.marks || 20;
 
     if (!teamId) {
       alert("Cannot add grade because the team id is missing from the API response.");
@@ -580,19 +648,19 @@ export default function MilestonesSetup() {
     }
 
     const currentVal = currentGrade.includes("Add") ? "" : currentGrade.split("/")[0];
-    const newGrade = prompt(`Enter grade for this team (out of 20):`, currentVal);
+    const newGrade = prompt(`Enter grade for this team (out of ${maxMarks}):`, currentVal);
     if (newGrade === null || newGrade === undefined) return;
 
     const parsed = parseFloat(newGrade);
-    if (isNaN(parsed) || parsed < 0 || parsed > 20) {
-      alert("Please enter a valid numeric grade between 0 and 20.");
+    if (isNaN(parsed) || parsed < 0 || parsed > maxMarks) {
+      alert(`Please enter a valid numeric grade between 0 and ${maxMarks}.`);
       return;
     }
 
     try {
       if (typeof teamId === "string" && teamId.startsWith("t")) {
         const grades = getMockGrades();
-        grades[`${milestone.id}-${teamId}`] = `${parsed}/20`;
+        grades[`${milestone.id}-${teamId}`] = `${parsed}/${maxMarks}`;
         localStorage.setItem("mock_milestone_grades", JSON.stringify(grades));
       } else {
         const gradeMilestoneId = await resolveGradeMilestoneId(teamId, milestone, team);
@@ -606,7 +674,7 @@ export default function MilestonesSetup() {
         if (m.id === milestone.id) {
           return {
             ...m,
-            teamsData: m.teamsData.map(t => t.id === teamId ? { ...t, grade: `${parsed}/20` } : t)
+            teamsData: m.teamsData.map(t => t.id === teamId ? { ...t, grade: `${parsed}/${maxMarks}` } : t)
           };
         }
         return m;
@@ -892,6 +960,8 @@ export default function MilestonesSetup() {
               const isOverdue = m.isOverdue;
               const canGrade = viewAs === "committee" && !isOverdue;
               const showNoteInput = !isCompleted;
+              const { submitted, total } = getTeamsStats(m);
+
 
               return (
                 <div key={m.id} style={{ marginBottom: "32px" }}>
@@ -1063,7 +1133,7 @@ export default function MilestonesSetup() {
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
                               <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
                                 <span style={{ fontSize: "13px", color: "#4b5563", fontWeight: 600 }}>
-                                  Teams Submitted : <span style={{ color: "#10b981" }}>{m.teamsSubmittedCount}</span>/{m.teamsTotalCount}
+                                  Teams Submitted : <span style={{ color: "#10b981" }}>{submitted}</span>/{total}
                                 </span>
                                 <button
                                   onClick={() => handleToggleTable(m.id)}
@@ -1093,7 +1163,7 @@ export default function MilestonesSetup() {
                           <div style={{ borderTop: "1px solid #f3f4f6", paddingTop: "12px", marginTop: "4px" }}>
                             <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
                               <span style={{ fontSize: "13px", color: "#4b5563", fontWeight: 600 }}>
-                                Teams Submitted : <span style={{ color: "#10b981" }}>{m.teamsSubmittedCount}</span>/{m.teamsTotalCount}
+                                Teams Submitted : <span style={{ color: "#10b981" }}>{submitted}</span>/{total}
                               </span>
                               <button
                                 onClick={() => handleToggleTable(m.id)}
@@ -1123,7 +1193,7 @@ export default function MilestonesSetup() {
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
                               <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
                                 <span style={{ fontSize: "13px", color: "#4b5563", fontWeight: 600 }}>
-                                  Teams Submitted : <span style={{ color: "#10b981" }}>{m.teamsSubmittedCount}</span>/{m.teamsTotalCount}
+                                  Teams Submitted : <span style={{ color: "#10b981" }}>{submitted}</span>/{total}
                                 </span>
                                 <button
                                   onClick={() => handleToggleTable(m.id)}
@@ -1294,28 +1364,28 @@ export default function MilestonesSetup() {
                                     </td>
 
                                     {canGrade && (
-                                      <td style={{ padding: "12px 16px" }}>
-                                        {team.grade.includes("Add") ? (
-                                          <span
-                                            onClick={() => handleGradeTeam(m, team)}
-                                            style={{ color: "#0066FF", fontWeight: "bold", cursor: "pointer" }}
-                                          >
-                                            Add Grade <span style={{ color: "#6b7280", fontWeight: 500 }}>/ 20</span>
-                                          </span>
-                                        ) : (
-                                          <span
-                                            onClick={() => handleGradeTeam(m, team)}
-                                            style={{
-                                              color: parseInt(team.grade.split("/")[0]) > 10 ? "#10b981" : "#ef4444",
-                                              fontWeight: "bold",
-                                              cursor: "pointer"
-                                            }}
-                                          >
-                                            {team.grade.split("/")[0]}<span style={{ color: "#6b7280", fontWeight: 500 }}>/20</span>
-                                          </span>
-                                        )}
-                                      </td>
-                                    )}
+                                       <td style={{ padding: "12px 16px" }}>
+                                         {team.grade.includes("Add") ? (
+                                           <span
+                                             onClick={() => handleGradeTeam(m, team)}
+                                             style={{ color: "#0066FF", fontWeight: "bold", cursor: "pointer" }}
+                                           >
+                                             Add Grade <span style={{ color: "#6b7280", fontWeight: 500 }}>/ {m.marks}</span>
+                                           </span>
+                                         ) : (
+                                           <span
+                                             onClick={() => handleGradeTeam(m, team)}
+                                             style={{
+                                               color: parseFloat(team.grade.split("/")[0]) >= (m.marks / 2) ? "#10b981" : "#ef4444",
+                                               fontWeight: "bold",
+                                               cursor: "pointer"
+                                             }}
+                                           >
+                                             {team.grade.split("/")[0]}<span style={{ color: "#6b7280", fontWeight: 500 }}>/{m.marks}</span>
+                                           </span>
+                                         )}
+                                       </td>
+                                     )}
                                   </>
                                 )}
                               </tr>
