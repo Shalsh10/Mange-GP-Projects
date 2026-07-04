@@ -306,7 +306,7 @@ function GradeChart({ data }) {
   }
   return (
     <article className="doctor-card doctor-grade-card">
-      <ResponsiveContainer width="100%" height="100%">
+      <ResponsiveContainer width="100%" height={300}>
         <BarChart data={data} layout="vertical" margin={{ top: 18, right: 34, bottom: 22, left: 8 }} barCategoryGap={18}>
           <CartesianGrid stroke="#EDF0F4" />
           <XAxis type="number" domain={[0, 100]} ticks={[0, 20, 40, 60, 80, 100]} orientation="top" axisLine={false} tickLine={false} tick={{ fill: "#777", fontSize: 10 }} />
@@ -320,6 +320,7 @@ function GradeChart({ data }) {
       </ResponsiveContainer>
     </article>
   );
+
 }
 
 function RecentActivity({ data }) {
