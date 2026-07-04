@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import DocHeader from "../Components/Header";
 import DocSidebar from "../Components/Sidebar";
 import {
@@ -138,19 +138,18 @@ export default function CommunityChat() {
     );
 
     try {
-      const formData = new FormData();
-      formData.append("conversation_id", activeConvId);
-      formData.append("message", text);
-
       const res = await fetch("/api/chat/messages", {
         method: "POST",
         headers: {
           Accept: "application/json",
+          "Content-Type": "application/json",
           Authorization: `Bearer ${getToken()}`,
           "ngrok-skip-browser-warning": "69420",
-          // لا تضع Content-Type لأن FormData بيتحددها أوتوماتيك
         },
-        body: formData,
+        body: JSON.stringify({
+          conversation_id: activeConvId,
+          message: text,
+        }),
       });
 
       if (res.ok) {
