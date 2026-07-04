@@ -15,6 +15,9 @@ import { useSearchParams } from "react-router-dom";
 import { customFetch } from "../apis/apiMain";
 import "./CommunityChat.css";
 
+// ─── Feature flag: اضبطها على true لما الباك اند يجهز endpoint الرسائل ───────
+const MESSAGES_API_READY = false;
+
 // ─── helper: build full URL for profile images ──────────────────────────────
 const BASE = "https://d97c-154-183-132-96.ngrok-free.app";
 function resolveImg(url) {
@@ -96,6 +99,12 @@ export default function CommunityChat() {
   // ── Fetch messages for a conversation ─────────────────────────────────────
   const fetchMessages = useCallback(async (convId) => {
     if (!convId) return;
+    // الـ endpoint مش جاهز على الباك اند لسه
+    if (!MESSAGES_API_READY) {
+      setMessages([]);
+      setLoadingMsgs(false);
+      return;
+    }
     setLoadingMsgs(true);
     setMessages([]);
     try {
@@ -107,15 +116,7 @@ export default function CommunityChat() {
           "ngrok-skip-browser-warning": "69420",
         },
       });
-      // 404 = endpoint not ready yet on backend, treat as empty
-      if (response.status === 404 || response.status === 405) {
-        setMessages([]);
-        return;
-      }
-      if (!response.ok) {
-        setMessages([]);
-        return;
-      }
+      if (!response.ok) { setMessages([]); return; }
       const text = await response.text();
       if (!text) { setMessages([]); return; }
       const res = JSON.parse(text);
