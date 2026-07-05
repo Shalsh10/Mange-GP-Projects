@@ -1,4 +1,5 @@
 import { NavLink, useLocation } from "react-router-dom";
+import { useState, useEffect } from "react";
 import {
   CalendarDays,
   CircleDot,
@@ -104,25 +105,36 @@ export default function Sidebar() {
 function SidebarItem({ icon, label, to, end }) {
   const location = useLocation();
   const params = new URLSearchParams(location.search);
-  const selectedTeamId = params.get("teamId") || "A";
-
-  const checkActive = (isActive) => {
-    if (isActive) return true;
-    if (label === "Library" && location.pathname.startsWith("/project-details")) {
-      return true;
-    }
-    return false;
-  };
+  const selectedConvId = params.get("convId") ? Number(params.get("convId")) : null;
 
   const isChatActive = label === "Community Chat" && location.pathname.startsWith("/chat");
 
-  const chatTeams = [
-    { id: "A", name: "Team A", unread: 0 },
-    { id: "B", name: "Team B", unread: 28 },
-    { id: "C", name: "Team C", unread: 0 },
-    { id: "D", name: "Team D", unread: 0 },
-    { id: "E", name: "Team E", unread: 32 },
-  ];
+  // ── Fetch conversations dynamically from API ──────────────────────────────
+  const [chatConvs, setChatConvs] = useState([]);
+
+  useEffect(() => {
+    if (!isChatActive) return;
+    const token = localStorage.getItem("token");
+    fetch("/api/chat/conversations", {
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${token}`,
+        "ngrok-skip-browser-warning": "69420",
+      },
+    })
+      .then((r) => r.ok ? r.json() : null)
+      .then((res) => {
+        const data = res?.data || res || [];
+        setChatConvs(Array.isArray(data) ? data : []);
+      })
+      .catch(() => {});
+  }, [isChatActive]);
+
+  const checkActive = (isActive) => {
+    if (isActive) return true;
+    if (label === "Library" && location.pathname.startsWith("/project-details")) return true;
+    return false;
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column" }}>
@@ -136,49 +148,36 @@ function SidebarItem({ icon, label, to, end }) {
         <span className="doctor-sidebar-icon">{icon}</span>
         <span className="doctor-sidebar-label">{label}</span>
       </NavLink>
-      
-      {isChatActive && (
+
+      {isChatActive && chatConvs.length > 0 && (
         <div className="doctor-sidebar-submenu" style={{ display: "flex", flexDirection: "column", paddingLeft: "40px", gap: "2px", margin: "4px 0" }}>
-          {chatTeams.map(t => {
-            const isActiveTeam = selectedTeamId === t.id;
+          {chatConvs.map((conv) => {
+            const isActiveConv = selectedConvId === conv.conversation_id;
             return (
               <NavLink
-                key={t.id}
-                to={`/chat?teamId=${t.id}`}
+                key={conv.conversation_id}
+                to={`/chat?convId=${conv.conversation_id}`}
                 className="doctor-sidebar-sublink"
                 style={{
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "space-between",
                   padding: "8px 16px 8px 12px",
-                  color: isActiveTeam ? "#ffffff" : "#cbd5e1",
-                  background: isActiveTeam ? "rgba(255, 255, 255, 0.15)" : "transparent",
+                  color: isActiveConv ? "#ffffff" : "#cbd5e1",
+                  background: isActiveConv ? "rgba(255, 255, 255, 0.15)" : "transparent",
                   textDecoration: "none",
                   fontSize: "13px",
-                  fontWeight: isActiveTeam ? "600" : "400",
+                  fontWeight: isActiveConv ? "600" : "400",
                   borderRadius: "4px 0 0 4px",
-                  transition: "all 0.15s ease"
+                  transition: "all 0.15s ease",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
                 }}
               >
-                <span>{t.name}</span>
-                {t.unread > 0 && (
-                  <span style={{
-                    background: "#ef4444",
-                    color: "#ffffff",
-                    fontSize: "9px",
-                    fontWeight: "700",
-                    minWidth: "16px",
-                    height: "16px",
-                    borderRadius: "8px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    padding: "0 4px",
-                    boxSizing: "border-box"
-                  }}>
-                    {t.unread}
-                  </span>
-                )}
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {conv.team_name}
+                </span>
               </NavLink>
             );
           })}
