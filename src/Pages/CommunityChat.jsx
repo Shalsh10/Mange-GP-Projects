@@ -5,11 +5,9 @@ import {
   Send,
   Plus,
   Users,
-  Search,
   CheckCheck,
   Loader2,
   MessageSquare,
-  Image as ImageIcon,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { useSearchParams } from "react-router-dom";
@@ -60,23 +58,21 @@ export default function CommunityChat() {
 
   // ── State ────────────────────────────────────────────────────────────────────
   const [conversations, setConversations]   = useState([]);
-  const [loadingConvs, setLoadingConvs]     = useState(true);
   const [activeConvData, setActiveConvData] = useState(null); // { conversation, messages, pagination }
   const [loadingMsgs, setLoadingMsgs]       = useState(false);
   const [messageInput, setMessageInput]     = useState("");
   const [sendingMsg, setSendingMsg]         = useState(false);
-  const [searchQuery, setSearchQuery]       = useState("");
   const messagesEndRef = useRef(null);
   const fileInputRef   = useRef(null);
 
   // ── Derived ──────────────────────────────────────────────────────────────────
   const activeConvMeta = conversations.find((c) => c.conversation_id === activeConvId) || null;
+  // eslint-disable-next-line no-unused-vars
   const messages       = activeConvData?.messages || [];
   const participants   = activeConvData?.conversation?.participants || activeConvMeta?.participants || [];
 
-  // ── Fetch conversations list ──────────────────────────────────────────────────
+  // ── Fetch conversations list (for meta/header info only) ─────────────────────
   const fetchConversations = useCallback(async () => {
-    setLoadingConvs(true);
     try {
       const res  = await customFetch("chat/conversations");
       const data = res?.data || res || [];
@@ -85,11 +81,7 @@ export default function CommunityChat() {
       if (!activeConvId && list.length > 0) {
         setSearchParams({ convId: list[0].conversation_id });
       }
-    } catch (err) {
-      toast.error("فشل تحميل المحادثات: " + err.message);
-    } finally {
-      setLoadingConvs(false);
-    }
+    } catch { /* silent */ }
   }, []);
 
   // ── Fetch conversation detail + messages: GET /api/chat/{id} ─────────────────
@@ -185,11 +177,7 @@ export default function CommunityChat() {
   useEffect(() => { if (activeConvId) fetchConversationDetail(activeConvId); }, [activeConvId]);
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
-  // ── Filter ────────────────────────────────────────────────────────────────────
-  const filteredConvs = conversations.filter((c) =>
-    c.team_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    c.leader_name?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+
 
   // ── Render ────────────────────────────────────────────────────────────────────
   return (
@@ -217,58 +205,7 @@ export default function CommunityChat() {
 
           <div className="chat-body-layout">
 
-            {/* ── LEFT: Conversations list ── */}
-            <div className="chat-left-sidebar">
-              <div className="chat-search-bar">
-                <Search size={15} />
-                <input
-                  type="text"
-                  placeholder="ابحث عن فريق..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
-              </div>
-
-              {loadingConvs ? (
-                <div className="chat-loading-state">
-                  <Loader2 size={22} className="spin-icon" />
-                  <span>جاري تحميل المحادثات...</span>
-                </div>
-              ) : filteredConvs.length === 0 ? (
-                <div className="chat-loading-state">
-                  <MessageSquare size={22} />
-                  <span>لا توجد محادثات</span>
-                </div>
-              ) : (
-                <ul className="chat-conv-list">
-                  {filteredConvs.map((conv) => {
-                    const isActive = conv.conversation_id === activeConvId;
-                    return (
-                      <li
-                        key={conv.conversation_id}
-                        className={`chat-conv-item ${isActive ? "active" : ""}`}
-                        onClick={() => setSearchParams({ convId: conv.conversation_id })}
-                      >
-                        <div className="conv-item-avatar">
-                          <AvatarPlaceholder name={conv.team_name} size={40} />
-                        </div>
-                        <div className="conv-item-info">
-                          <span className="conv-item-name">{conv.team_name}</span>
-                          <span className="conv-item-sub">
-                            {conv.last_message || "لا توجد رسائل بعد"}
-                          </span>
-                        </div>
-                        {conv.last_message_at && (
-                          <span className="conv-item-time">{formatTime(conv.last_message_at)}</span>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </div>
-
-            {/* ── MIDDLE: Chat Viewport ── */}
+            {/* ── Chat Viewport ── */}
             <div className="chat-viewport">
               {!activeConvMeta ? (
                 <div className="chat-empty-feed">
